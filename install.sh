@@ -445,4 +445,5 @@ main() {
   esac
 }
 
-main "$@"
+# Only run main when executed directly, not when sourced (e.g. for testing).
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"

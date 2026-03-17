@@ -13,9 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	githubRepo    = "geodro/lerd"
-	githubAPIBase = "https://api.github.com/repos/" + githubRepo
+const githubRepo = "geodro/lerd"
+
+// These vars are overridden in tests to point at an httptest server.
+var (
+	githubAPIBase      = "https://api.github.com/repos/" + githubRepo
+	githubDownloadBase = "https://github.com/" + githubRepo + "/releases/download"
 )
 
 // NewUpdateCmd returns the update command.
@@ -105,7 +108,7 @@ func downloadReleaseBinary(version string) (string, func(), error) {
 	ver := stripV(version)
 
 	filename := fmt.Sprintf("lerd_%s_linux_%s.tar.gz", ver, arch)
-	url := fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", githubRepo, ver, filename)
+	url := fmt.Sprintf("%s/v%s/%s", githubDownloadBase, ver, filename)
 
 	tmp, err := os.MkdirTemp("", "lerd-update-*")
 	if err != nil {

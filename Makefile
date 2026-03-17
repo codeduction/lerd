@@ -29,6 +29,11 @@ install-installer:
 test:
 	go test ./...
 
+test-installer:
+	bats tests/installer/installer.bats
+
+test-all: test test-installer
+
 clean:
 	rm -rf $(BUILD_DIR)
 
