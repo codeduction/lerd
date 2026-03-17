@@ -7,6 +7,18 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.12] — 2026-03-17
+
+### Fixed
+
+- `lerd service start <service>` — automatically writes the quadlet file and reloads systemd before starting, so services work on first use without needing a prior `lerd install`
+
+### Changed
+
+- `lerd service start` and `lerd service restart` now print the recommended `.env` variables to add to your Laravel project after the service starts
+
+---
+
 ## [0.1.11] — 2026-03-17
 
 ### Added
@@ -184,6 +196,7 @@ Initial release.
 
 ---
 
+[0.1.12]: https://github.com/geodro/lerd/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/geodro/lerd/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/geodro/lerd/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/geodro/lerd/compare/v0.1.8...v0.1.9
