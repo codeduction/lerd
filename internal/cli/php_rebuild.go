@@ -37,6 +37,11 @@ func runPhpRebuild(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Store the new Containerfile hash so future updates know images are current.
+	if err := podman.StoreFPMHash(); err != nil {
+		fmt.Printf("  [WARN] could not store image hash: %v\n", err)
+	}
+
 	fmt.Println("\nAll PHP-FPM images rebuilt.")
 	fmt.Println("Restart FPM containers to use the new images:")
 	for _, v := range versions {

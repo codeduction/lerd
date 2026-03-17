@@ -7,6 +7,15 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.25] — 2026-03-17
+
+### Changed
+
+- `lerd update` no longer unconditionally rebuilds PHP-FPM images — it now computes a SHA-256 hash of the embedded Containerfile and only rebuilds if the hash differs from the one stored after the last successful build
+- Hash is stored to `~/.local/share/lerd/php-image-hash` after `lerd php:rebuild`, `lerd use <version>`, and `lerd park` (first build)
+
+---
+
 ## [0.1.24] — 2026-03-17
 
 ### Fixed
@@ -318,6 +327,7 @@ Initial release.
 
 ---
 
+[0.1.25]: https://github.com/geodro/lerd/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/geodro/lerd/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/geodro/lerd/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/geodro/lerd/compare/v0.1.21...v0.1.22

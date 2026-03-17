@@ -1,11 +1,49 @@
 package podman
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/geodro/lerd/internal/config"
 )
+
+// ContainerfileHash returns the SHA-256 hash of the embedded PHP-FPM Containerfile.
+// This is used to detect when images need to be rebuilt after a lerd update.
+func ContainerfileHash() (string, error) {
+	tmpl, err := GetQuadletTemplate("lerd-php-fpm.Containerfile")
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(tmpl))
+	return fmt.Sprintf("%x", sum), nil
+}
+
+// NeedsFPMRebuild returns true if the stored Containerfile hash differs from the
+// current embedded Containerfile, meaning images should be rebuilt.
+func NeedsFPMRebuild() bool {
+	current, err := ContainerfileHash()
+	if err != nil {
+		return false
+	}
+	stored, err := os.ReadFile(config.PHPImageHashFile())
+	if err != nil {
+		// No stored hash yet — treat as needing rebuild only if images exist
+		return false
+	}
+	return strings.TrimSpace(string(stored)) != current
+}
+
+// StoreFPMHash writes the current Containerfile hash to disk.
+func StoreFPMHash() error {
+	hash, err := ContainerfileHash()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(config.PHPImageHashFile(), []byte(hash), 0644)
+}
 
 // BuildFPMImage builds the lerd PHP-FPM image for the given version if it doesn't exist.
 // Prints build output to stdout so the user can see progress.

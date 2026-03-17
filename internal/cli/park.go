@@ -180,6 +180,7 @@ func ensureFPMQuadlet(phpVersion string) error {
 	if err := podman.BuildFPMImage(phpVersion); err != nil {
 		return fmt.Errorf("building FPM image for PHP %s: %w", phpVersion, err)
 	}
+	_ = podman.StoreFPMHash()
 
 	tmplContent, err := podman.GetQuadletTemplate("lerd-php-fpm.container.tmpl")
 	if err != nil {

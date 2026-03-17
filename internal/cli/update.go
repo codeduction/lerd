@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/geodro/lerd/internal/podman"
 	"github.com/spf13/cobra"
 )
 
@@ -86,13 +87,17 @@ func runUpdate(currentVersion string) error {
 		return err
 	}
 
-	// Rebuild all PHP-FPM images so Containerfile changes take effect.
-	fmt.Println("\n==> Rebuilding PHP-FPM images")
-	rebuildCmd := exec.Command(self, "php:rebuild")
-	rebuildCmd.Stdout = os.Stdout
-	rebuildCmd.Stderr = os.Stderr
-	rebuildCmd.Stdin = os.Stdin
-	return rebuildCmd.Run()
+	// Only rebuild PHP-FPM images if the embedded Containerfile changed.
+	if podman.NeedsFPMRebuild() {
+		fmt.Println("\n==> PHP-FPM Containerfile changed — rebuilding images")
+		rebuildCmd := exec.Command(self, "php:rebuild")
+		rebuildCmd.Stdout = os.Stdout
+		rebuildCmd.Stderr = os.Stderr
+		rebuildCmd.Stdin = os.Stdin
+		return rebuildCmd.Run()
+	}
+	fmt.Println("\n==> PHP-FPM images are up to date, skipping rebuild")
+	return nil
 }
 
 func fetchLatestVersion() (string, error) {

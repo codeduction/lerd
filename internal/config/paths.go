@@ -80,3 +80,8 @@ func QuadletDir() string {
 func SystemdUserDir() string {
 	return filepath.Join(xdgConfigHome(), "systemd", "user")
 }
+
+// PHPImageHashFile returns the path to the stored PHP-FPM Containerfile hash.
+func PHPImageHashFile() string {
+	return filepath.Join(DataDir(), "php-image-hash")
+}
