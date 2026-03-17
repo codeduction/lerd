@@ -168,6 +168,36 @@ func runInstall(_ *cobra.Command, _ []string) error {
 		ok()
 	}
 
+	// UI service
+	step("Writing UI service")
+	uiContent, err := lerdSystemd.GetUnit("lerd-ui")
+	if err != nil {
+		return err
+	}
+	if err := lerdSystemd.WriteService("lerd-ui", uiContent); err != nil {
+		return fmt.Errorf("ui service: %w", err)
+	}
+	if err := lerdSystemd.EnableService("lerd-ui"); err != nil {
+		fmt.Printf(" [WARN: %v]\n", err)
+	} else {
+		ok()
+	}
+
+	step("Writing UI vhost")
+	gateway := podman.NetworkGateway("lerd")
+	if err := nginx.GenerateProxyVhost("lerd.test", gateway, 7073); err != nil {
+		fmt.Printf(" [WARN: %v]\n", err)
+	} else {
+		ok()
+	}
+
+	step("Starting lerd-ui")
+	if err := podman.StartUnit("lerd-ui"); err != nil {
+		fmt.Printf(" [WARN: %v]\n", err)
+	} else {
+		ok()
+	}
+
 	// 9. Shell shims
 	step("Adding shell PATH configuration")
 	if err := addShellShims(); err != nil {
@@ -177,6 +207,7 @@ func runInstall(_ *cobra.Command, _ []string) error {
 	}
 
 	fmt.Println("\nLerd installation complete!")
+	fmt.Println("\n  Dashboard: http://lerd.test")
 	return nil
 }
 

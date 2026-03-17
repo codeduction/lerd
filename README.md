@@ -146,6 +146,7 @@ That's it. Nginx is serving your project through PHP-FPM, all inside Podman cont
 | `lerd dns:check` | Verify that `*.test` resolves to `127.0.0.1` |
 | `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, services, cert expiry |
 | `lerd logs [-f] [target]` | Show logs for the current project's FPM container, `nginx`, a service name, or a PHP version |
+| `lerd.test` | Browser dashboard — sites, services, system health, update button |
 
 ### Site management
 

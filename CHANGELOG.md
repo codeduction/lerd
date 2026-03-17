@@ -7,6 +7,18 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.21] — 2026-03-17
+
+### Added
+
+- **Lerd dashboard** — browser UI available at `http://lerd.test`, served by `lerd serve-ui` as a persistent systemd user service (`lerd-ui.service`)
+- Dashboard shows three tabs: **Sites** (table with domain links, PHP/Node version, TLS badge, FPM status), **Services** (start/stop toggles, copy `.env` button per service), **System** (DNS, nginx, PHP-FPM health, auto-refreshes every 10 seconds)
+- **Update flow** built into the UI: "Check for update" button in sidebar checks GitHub releases; if an update is available shows the version and an "Update" button that runs `lerd update`
+- `lerd install` now writes and starts `lerd-ui.service` and generates the `lerd.test` nginx reverse proxy vhost; prints `Dashboard: http://lerd.test` on completion
+- `lerd start` / `lerd stop` include `lerd-ui` alongside DNS, nginx, and PHP-FPM
+
+---
+
 ## [0.1.20] — 2026-03-17
 
 ### Changed
@@ -278,6 +290,7 @@ Initial release.
 
 ---
 
+[0.1.21]: https://github.com/geodro/lerd/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/geodro/lerd/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/geodro/lerd/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/geodro/lerd/compare/v0.1.17...v0.1.18

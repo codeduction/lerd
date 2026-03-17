@@ -28,7 +28,7 @@ func NewStopCmd() *cobra.Command {
 }
 
 func coreUnits() []string {
-	units := []string{"lerd-dns", "lerd-nginx"}
+	units := []string{"lerd-dns", "lerd-nginx", "lerd-ui"}
 	versions, _ := phpPkg.ListInstalled()
 	for _, v := range versions {
 		short := strings.ReplaceAll(v, ".", "")

@@ -46,6 +46,7 @@ func main() {
 	root.AddCommand(cli.NewLogsCmd())
 	root.AddCommand(newDNSCheckCmd())
 	root.AddCommand(newWatchCmd())
+	root.AddCommand(cli.NewServeUICmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

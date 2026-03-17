@@ -103,6 +103,46 @@ func RemoveVhost(domain string) error {
 	return nil
 }
 
+// proxyVhostData is the template data for vhost-proxy.conf.tmpl.
+type proxyVhostData struct {
+	Domain       string
+	UpstreamHost string
+	UpstreamPort int
+	Resolver     string
+}
+
+// GenerateProxyVhost renders vhost-proxy.conf.tmpl and writes conf.d/{domain}.conf.
+func GenerateProxyVhost(domain, upstreamHost string, upstreamPort int) error {
+	tmplData, err := GetTemplate("vhost-proxy.conf.tmpl")
+	if err != nil {
+		return err
+	}
+
+	tmpl, err := template.New("vhost-proxy").Parse(string(tmplData))
+	if err != nil {
+		return err
+	}
+
+	resolver := podman.NetworkGateway("lerd")
+	data := proxyVhostData{
+		Domain:       domain,
+		UpstreamHost: upstreamHost,
+		UpstreamPort: upstreamPort,
+		Resolver:     resolver,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(config.NginxConfD(), 0755); err != nil {
+		return err
+	}
+	confPath := filepath.Join(config.NginxConfD(), domain+".conf")
+	return os.WriteFile(confPath, buf.Bytes(), 0644)
+}
+
 // Reload signals nginx to reload its configuration.
 func Reload() error {
 	_, err := podman.Run("exec", "lerd-nginx", "nginx", "-s", "reload")

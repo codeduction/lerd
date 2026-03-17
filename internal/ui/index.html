@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lerd Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="lerdApp()" x-init="init()" x-cloak>
+
+  <!-- Sidebar + Content layout -->
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-56 bg-gray-900 text-white flex flex-col shrink-0">
+      <div class="px-6 py-6 border-b border-gray-700">
+        <div class="flex items-center gap-2">
+          <span class="text-xl font-bold tracking-tight">Lerd</span>
+          <span class="text-xs text-gray-400 mt-1" x-text="'v' + version.current"></span>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">Local Dev Environment</p>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <button
+          @click="tab = 'sites'"
+          :class="tab === 'sites' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+          class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
+        >
+          Sites
+        </button>
+        <button
+          @click="tab = 'services'"
+          :class="tab === 'services' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+          class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
+        >
+          Services
+        </button>
+        <button
+          @click="tab = 'system'"
+          :class="tab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+          class="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors"
+        >
+          System
+        </button>
+      </nav>
+
+      <!-- Version / Update section at bottom -->
+      <div class="px-4 py-4 border-t border-gray-700 space-y-2">
+        <template x-if="!version.checked">
+          <button
+            @click="checkVersion()"
+            :disabled="version.checking"
+            class="w-full text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            <span x-show="!version.checking">Check for update</span>
+            <span x-show="version.checking">Checking...</span>
+          </button>
+        </template>
+
+        <template x-if="version.checked && !version.hasUpdate">
+          <div class="text-xs text-center text-green-400 bg-green-900/30 rounded px-3 py-1.5">
+            Up to date
+          </div>
+        </template>
+
+        <template x-if="version.checked && version.hasUpdate">
+          <div class="space-y-1.5">
+            <div class="text-xs text-center text-yellow-300 bg-yellow-900/30 rounded px-3 py-1.5">
+              <span x-text="version.latest + ' available'"></span>
+            </div>
+            <button
+              @click="runUpdate()"
+              :disabled="version.updating"
+              class="w-full text-xs bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              <span x-show="!version.updating">Update</span>
+              <span x-show="version.updating">Updating...</span>
+            </button>
+          </div>
+        </template>
+
+        <template x-if="version.updateDone">
+          <div class="text-xs text-center text-green-400 bg-green-900/30 rounded px-3 py-1.5">
+            Update complete — restart lerd-ui
+          </div>
+        </template>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 flex flex-col min-w-0">
+
+      <!-- Top bar -->
+      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0">
+        <h1 class="text-lg font-semibold text-gray-800" x-text="tabTitle()"></h1>
+        <div class="flex items-center gap-3">
+          <template x-if="tab === 'sites'">
+            <button
+              @click="loadSites()"
+              class="text-sm bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md px-4 py-1.5 transition-colors"
+            >
+              Refresh
+            </button>
+          </template>
+        </div>
+      </header>
+
+      <!-- Tab content -->
+      <div class="flex-1 p-8 overflow-auto">
+
+        <!-- ===== SITES TAB ===== -->
+        <div x-show="tab === 'sites'">
+          <template x-if="sitesLoading">
+            <div class="text-gray-500 text-sm">Loading sites...</div>
+          </template>
+          <template x-if="!sitesLoading && sites.length === 0">
+            <div class="text-gray-500 text-sm">No sites registered. Use <code class="bg-gray-100 px-1 rounded">lerd park</code> or <code class="bg-gray-100 px-1 rounded">lerd link</code> to add sites.</div>
+          </template>
+          <template x-if="!sitesLoading && sites.length > 0">
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">Domain</th>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">Path</th>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">PHP</th>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">Node</th>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">TLS</th>
+                    <th class="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <template x-for="site in sites" :key="site.domain">
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3">
+                        <a
+                          :href="'http://' + site.domain"
+                          target="_blank"
+                          rel="noopener"
+                          class="text-blue-600 hover:underline font-medium"
+                          x-text="site.domain"
+                        ></a>
+                      </td>
+                      <td class="px-4 py-3 text-gray-600 font-mono text-xs truncate max-w-xs" x-text="site.path"></td>
+                      <td class="px-4 py-3 text-gray-600" x-text="site.php_version || '—'"></td>
+                      <td class="px-4 py-3 text-gray-600" x-text="site.node_version || '—'"></td>
+                      <td class="px-4 py-3">
+                        <template x-if="site.tls">
+                          <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+                            HTTPS
+                          </span>
+                        </template>
+                        <template x-if="!site.tls">
+                          <span class="text-gray-400 text-xs">—</span>
+                        </template>
+                      </td>
+                      <td class="px-4 py-3">
+                        <template x-if="site.fpm_running">
+                          <span class="inline-flex items-center gap-1.5 text-xs font-medium text-green-700">
+                            <span class="w-2 h-2 rounded-full bg-green-500"></span>running
+                          </span>
+                        </template>
+                        <template x-if="!site.fpm_running">
+                          <span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-600">
+                            <span class="w-2 h-2 rounded-full bg-red-400"></span>stopped
+                          </span>
+                        </template>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </div>
+
+        <!-- ===== SERVICES TAB ===== -->
+        <div x-show="tab === 'services'">
+          <template x-if="servicesLoading">
+            <div class="text-gray-500 text-sm">Loading services...</div>
+          </template>
+          <template x-if="!servicesLoading">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <template x-for="svc in services" :key="svc.name">
+                <div class="bg-white rounded-lg border border-gray-200 p-4 flex flex-col gap-3">
+                  <!-- Name + status indicator -->
+                  <div class="flex items-center justify-between">
+                    <span class="font-semibold text-gray-800" x-text="capitalize(svc.name)"></span>
+                    <span class="flex items-center gap-1.5 text-xs" :class="svc.status === 'active' ? 'text-green-600' : 'text-gray-400'">
+                      <span class="w-2 h-2 rounded-full" :class="svc.status === 'active' ? 'bg-green-500' : 'bg-gray-300'"></span>
+                      <span x-text="svc.status"></span>
+                    </span>
+                  </div>
+
+                  <!-- Action buttons -->
+                  <div class="flex gap-2 mt-auto">
+                    <template x-if="svc.status !== 'active'">
+                      <button
+                        @click="toggleService(svc, 'start')"
+                        :disabled="svc.loading"
+                        class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded px-3 py-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <template x-if="svc.loading">
+                          <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                          </svg>
+                        </template>
+                        <template x-if="!svc.loading">
+                          <span>Start</span>
+                        </template>
+                      </button>
+                    </template>
+                    <template x-if="svc.status === 'active'">
+                      <button
+                        @click="toggleService(svc, 'stop')"
+                        :disabled="svc.loading"
+                        class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded px-3 py-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <template x-if="svc.loading">
+                          <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                          </svg>
+                        </template>
+                        <template x-if="!svc.loading">
+                          <span>Stop</span>
+                        </template>
+                      </button>
+                    </template>
+
+                    <button
+                      @click="copyEnvVars(svc)"
+                      class="text-xs font-medium bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 rounded px-3 py-1.5 transition-colors"
+                      :title="'Copy .env vars for ' + svc.name"
+                    >
+                      Copy .env
+                    </button>
+                  </div>
+
+                  <!-- Copy feedback -->
+                  <template x-if="svc.copied">
+                    <div class="text-xs text-center text-green-600 bg-green-50 rounded px-2 py-1">Copied!</div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- ===== SYSTEM TAB ===== -->
+        <div x-show="tab === 'system'">
+          <template x-if="statusLoading">
+            <div class="text-gray-500 text-sm">Loading system status...</div>
+          </template>
+          <template x-if="!statusLoading">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+              <!-- DNS card -->
+              <div class="bg-white rounded-lg border border-gray-200 p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-semibold text-gray-800">DNS</h3>
+                  <template x-if="systemStatus.dns && systemStatus.dns.ok">
+                    <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>OK
+                    </span>
+                  </template>
+                  <template x-if="!systemStatus.dns || !systemStatus.dns.ok">
+                    <span class="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Failed
+                    </span>
+                  </template>
+                </div>
+                <p class="text-sm text-gray-600">
+                  TLD: <code class="bg-gray-100 px-1 rounded" x-text="'.' + (systemStatus.dns ? systemStatus.dns.tld : 'test')"></code>
+                </p>
+                <template x-if="!systemStatus.dns || !systemStatus.dns.ok">
+                  <p class="text-xs text-gray-500 mt-2">Run <code class="bg-gray-100 px-1 rounded">lerd install</code> to fix DNS.</p>
+                </template>
+              </div>
+
+              <!-- Nginx card -->
+              <div class="bg-white rounded-lg border border-gray-200 p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-semibold text-gray-800">Nginx</h3>
+                  <template x-if="systemStatus.nginx && systemStatus.nginx.running">
+                    <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Running
+                    </span>
+                  </template>
+                  <template x-if="!systemStatus.nginx || !systemStatus.nginx.running">
+                    <span class="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Stopped
+                    </span>
+                  </template>
+                </div>
+                <p class="text-sm text-gray-600">Podman container: <code class="bg-gray-100 px-1 rounded">lerd-nginx</code></p>
+              </div>
+
+              <!-- PHP FPM card -->
+              <div class="bg-white rounded-lg border border-gray-200 p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-semibold text-gray-800">PHP-FPM</h3>
+                </div>
+                <template x-if="systemStatus.php_fpms && systemStatus.php_fpms.length === 0">
+                  <p class="text-sm text-gray-500">No PHP versions installed.</p>
+                </template>
+                <template x-if="!systemStatus.php_fpms || systemStatus.php_fpms.length === 0">
+                  <p class="text-xs text-gray-400 mt-1">Run <code class="bg-gray-100 px-1 rounded">lerd use 8.3</code> to install PHP.</p>
+                </template>
+                <ul class="space-y-1.5" x-show="systemStatus.php_fpms && systemStatus.php_fpms.length > 0">
+                  <template x-for="fpm in systemStatus.php_fpms" :key="fpm.version">
+                    <li class="flex items-center justify-between text-sm">
+                      <span class="text-gray-700">PHP <span x-text="fpm.version"></span></span>
+                      <template x-if="fpm.running">
+                        <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+                          <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>running
+                        </span>
+                      </template>
+                      <template x-if="!fpm.running">
+                        <span class="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                          <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>stopped
+                        </span>
+                      </template>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+
+            </div>
+          </template>
+          <p class="text-xs text-gray-400 mt-4">Auto-refreshes every 10 seconds.</p>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+<script>
+function lerdApp() {
+  return {
+    tab: 'sites',
+    sites: [],
+    sitesLoading: false,
+    services: [],
+    servicesLoading: false,
+    systemStatus: {},
+    statusLoading: false,
+    version: {
+      current: '...',
+      latest: '',
+      hasUpdate: false,
+      checked: false,
+      checking: false,
+      updating: false,
+      updateDone: false,
+    },
+    _statusInterval: null,
+
+    init() {
+      this.loadVersion();
+      this.loadSites();
+      this.loadServices();
+      this.loadStatus();
+      this._statusInterval = setInterval(() => {
+        if (this.tab === 'system') {
+          this.loadStatus();
+        }
+      }, 10000);
+    },
+
+    tabTitle() {
+      const map = { sites: 'Sites', services: 'Services', system: 'System' };
+      return map[this.tab] || '';
+    },
+
+    capitalize(s) {
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    },
+
+    async loadVersion() {
+      try {
+        const res = await fetch('/api/version');
+        const data = await res.json();
+        this.version.current = data.current || 'dev';
+      } catch (_) {}
+    },
+
+    async checkVersion() {
+      this.version.checking = true;
+      try {
+        const res = await fetch('/api/version');
+        const data = await res.json();
+        this.version.current = data.current || 'dev';
+        this.version.latest = data.latest || '';
+        this.version.hasUpdate = data.has_update || false;
+        this.version.checked = true;
+      } catch (_) {
+        this.version.checked = true;
+        this.version.hasUpdate = false;
+      } finally {
+        this.version.checking = false;
+      }
+    },
+
+    async runUpdate() {
+      this.version.updating = true;
+      try {
+        await fetch('/api/update', { method: 'POST' });
+        this.version.updateDone = true;
+        this.version.hasUpdate = false;
+      } catch (_) {} finally {
+        this.version.updating = false;
+      }
+    },
+
+    async loadSites() {
+      this.sitesLoading = true;
+      try {
+        const res = await fetch('/api/sites');
+        this.sites = await res.json();
+      } catch (_) {
+        this.sites = [];
+      } finally {
+        this.sitesLoading = false;
+      }
+    },
+
+    async loadServices() {
+      this.servicesLoading = true;
+      try {
+        const res = await fetch('/api/services');
+        const data = await res.json();
+        this.services = data.map(s => ({ ...s, loading: false, copied: false }));
+      } catch (_) {
+        this.services = [];
+      } finally {
+        this.servicesLoading = false;
+      }
+    },
+
+    async toggleService(svc, action) {
+      svc.loading = true;
+      try {
+        const res = await fetch(`/api/services/${svc.name}/${action}`, { method: 'POST' });
+        const updated = await res.json();
+        svc.status = updated.status;
+        svc.env_vars = updated.env_vars;
+      } catch (_) {} finally {
+        svc.loading = false;
+      }
+    },
+
+    async copyEnvVars(svc) {
+      const lines = Object.entries(svc.env_vars || {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n');
+      try {
+        await navigator.clipboard.writeText(lines);
+        svc.copied = true;
+        setTimeout(() => { svc.copied = false; }, 2000);
+      } catch (_) {}
+    },
+
+    async loadStatus() {
+      this.statusLoading = (Object.keys(this.systemStatus).length === 0);
+      try {
+        const res = await fetch('/api/status');
+        this.systemStatus = await res.json();
+      } catch (_) {} finally {
+        this.statusLoading = false;
+      }
+    },
+  };
+}
+</script>
+</body>
+</html>

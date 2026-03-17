@@ -1,0 +1,10 @@
+[Unit]
+Description=Lerd UI Dashboard
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/lerd serve-ui
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
