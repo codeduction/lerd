@@ -30,7 +30,7 @@ warn()    { echo -e "  ${YELLOW}!${RESET}  $*"; }
 error()   { echo -e "  ${RED}✗${RESET}  $*" >&2; }
 die()     { error "$*"; exit 1; }
 header()  { echo -e "\n${BOLD}$*${RESET}"; }
-ask()     { echo -en "  ${BOLD}?${RESET}  $* [y/N] "; read -r _ans; [[ "$_ans" =~ ^[Yy]$ ]]; }
+ask()     { echo -en "  ${BOLD}?${RESET}  $* [y/N] "; read -r _ans </dev/tty; [[ "$_ans" =~ ^[Yy]$ ]]; }
 
 # ── Platform detection ───────────────────────────────────────────────────────
 detect_arch() {
@@ -322,6 +322,10 @@ cmd_install() {
   header "Installing Lerd"
 
   check_prerequisites
+
+  if ! command -v podman &>/dev/null; then
+    die "podman is required but not installed. Install it and re-run this script."
+  fi
 
   mkdir -p "$INSTALL_DIR"
 
