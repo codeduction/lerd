@@ -28,6 +28,8 @@ func Setup() error {
 		return fmt.Errorf("writing lerd dnsmasq config: %w", err)
 	}
 
+	fmt.Println("  [sudo required] Configuring NetworkManager for .test DNS resolution")
+
 	// Write /etc/NetworkManager/conf.d/lerd.conf
 	nmConfDir := "/etc/NetworkManager/conf.d"
 	nmConfFile := filepath.Join(nmConfDir, "lerd.conf")

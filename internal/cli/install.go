@@ -77,7 +77,7 @@ func runInstall(_ *cobra.Command, _ []string) error {
 
 	// 5. DNS config
 	step("Writing DNS configuration")
-	if err := dns.WriteDnsmasqConfig(config.DnsmasqDir()); err != nil {
+	if err := dns.Setup(); err != nil {
 		return fmt.Errorf("dns config: %w", err)
 	}
 	ok()

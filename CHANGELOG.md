@@ -7,6 +7,15 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.6] — 2026-03-17
+
+### Fixed
+
+- `lerd install` was calling `dns.WriteDnsmasqConfig` (writes only the container's local config) instead of `dns.Setup()`, which means `/etc/NetworkManager/conf.d/lerd.conf` and `/etc/NetworkManager/dnsmasq.d/lerd.conf` were never written and NetworkManager was never restarted — causing `*.test` DNS resolution to silently fail
+- `dns.Setup()` now prints a clear message before invoking `sudo` so users know why a password prompt appears
+
+---
+
 ## [0.1.5] — 2026-03-17
 
 ### Fixed
@@ -114,6 +123,7 @@ Initial release.
 
 ---
 
+[0.1.6]: https://github.com/geodro/lerd/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/geodro/lerd/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/geodro/lerd/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/geodro/lerd/compare/v0.1.2...v0.1.3
