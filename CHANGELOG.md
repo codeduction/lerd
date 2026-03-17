@@ -7,6 +7,14 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.31] — 2026-03-17
+
+### Fixed
+
+- `lerd update` no longer fails with "GitHub API returned HTTP 403" — the version check now sends a `User-Agent: lerd-cli` header, which GitHub requires for unauthenticated API requests
+
+---
+
 ## [0.1.30] — 2026-03-17
 
 ### Fixed

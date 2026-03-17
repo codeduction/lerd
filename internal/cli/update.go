@@ -115,7 +115,14 @@ func restartUI() {
 }
 
 func fetchLatestVersion() (string, error) {
-	resp, err := http.Get(githubAPIBase + "/releases/latest") //nolint:gosec,noctx
+	req, err := http.NewRequest(http.MethodGet, githubAPIBase+"/releases/latest", nil) //nolint:noctx
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "lerd-cli")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
