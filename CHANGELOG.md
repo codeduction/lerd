@@ -7,6 +7,120 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.53] — 2026-03-17
+
+### Fixed
+
+- `lerd install` now configures the system DNS resolver (writes NM dispatcher / applies `resolvectl`) only **after** `lerd-dns` is running — previously applying `resolvectl dns <iface> 127.0.0.1:5300` before the dnsmasq container started routed all DNS through a non-existent server, breaking image pulls with "no such host" / "server misbehaving"
+
+---
+
+## [0.1.52] — 2026-03-17
+
+### Fixed
+
+- DNS resolution on Ubuntu (systemd-resolved + NetworkManager): NM overrides global `resolved.conf` drop-ins via DBUS so the `DNS=127.0.0.1:5300` drop-in had no effect; now installs an NM dispatcher script (`/etc/NetworkManager/dispatcher.d/99-lerd-dns`) that calls `resolvectl dns/domain` per-interface on "up", and applies it immediately to the default interface
+- Upstream DNS servers in the dnsmasq config are now detected from the running system (`/run/systemd/resolve/resolv.conf` → `/etc/resolv.conf`, skipping loopback/stub addresses) — no hardcoded IPs
+- `lerd-dns.container` now mounts `~/.local/share/lerd/dnsmasq` into the container and uses `--conf-dir` instead of embedding all options in the `Exec` line
+
+---
+
+## [0.1.51] — 2026-03-17
+
+### Fixed
+
+- DNS resolution now works on systems using systemd-resolved (Ubuntu, etc.) — `lerd install` detects whether systemd-resolved is the active resolver and writes `/etc/systemd/resolved.conf.d/lerd.conf` with `DNS=127.0.0.1:5300` and `Domains=~test` instead of configuring NetworkManager's embedded dnsmasq
+- `lerd status` PHP version hint no longer shows "8.5" — corrected to "8.4"
+
+---
+
+## [0.1.50] — 2026-03-17
+
+### Fixed
+
+- `install.sh` `--local` binary path is now validated before `check_prerequisites` runs — previously podman not being installed would cause `die "podman is required"` before the file-exists check, making bats test 23 fail in CI
+
+---
+
+## [0.1.49] — 2026-03-17
+
+### Fixed
+
+- `install.sh` `ask()` no longer causes CI test failures under `set -euo pipefail` when `/dev/tty` is unavailable — `read </dev/tty` now has `2>/dev/null || true` so a missing tty is silently treated as "no"
+
+---
+
+## [0.1.48] — 2026-03-17
+
+### Fixed
+
+- All container images now use fully qualified names (`docker.io/library/nginx:alpine`, etc.) — Ubuntu's `/etc/containers/registries.conf` has no unqualified-search registries, causing short names to fail with exit code 125
+- `lerd install` now writes the `lerd.test` UI vhost **before** starting nginx so the dashboard is available on the very first start
+
+---
+
+## [0.1.47] — 2026-03-17
+
+### Fixed
+
+- `lerd install` now runs `podman system migrate` after installing podman on a fresh system to initialise Podman's storage before the first rootless container operation
+
+---
+
+## [0.1.46] — 2026-03-17
+
+### Fixed
+
+- Container images are now pre-pulled before `daemon-reload` / service start so the systemd 90 s default timeout is not exceeded on a fresh install pulling large images; `TimeoutStartSec=300` added to both `lerd-nginx.container` and `lerd-dns.container` as an additional safeguard
+- `lerd install` no longer prints a spurious nginx reload `[WARN]` — the separate reload step was removed; `RestartUnit` already loads the latest config
+
+---
+
+## [0.1.45] — 2026-03-17
+
+### Fixed
+
+- `install.sh` `ask()` now reads from `/dev/tty` so prompts work correctly when the script is piped to bash (`curl | bash`); a missing tty falls back gracefully
+- `install.sh` now aborts with a clear error if `podman` is not found after the prerequisite install step
+
+---
+
+## [0.1.44] — 2026-03-17
+
+### Fixed
+
+- HTTP→HTTPS redirect in SSL vhosts changed from `301` (permanent, browser-cached) to `302` (temporary) so disabling HTTPS is not cached by the browser
+- Site domain links in the dashboard now use `https://` when TLS is enabled and `http://` otherwise
+
+---
+
+## [0.1.43] — 2026-03-17
+
+### Fixed
+
+- `lerd install` (and `lerd update`) no longer overwrites SSL vhosts with plain HTTP configs — sites with `secured: true` in `sites.yaml` now have their SSL vhost regenerated in-place during the vhost regeneration step
+- Sites table in the dashboard no longer flickers on background poll — the 5 s interval now updates existing row properties in-place instead of replacing the entire array; new/removed sites are still added/removed correctly
+
+---
+
+## [0.1.42] — 2026-03-17
+
+### Added
+
+- Sites tab now auto-refreshes every 5 seconds — PHP version, Node version, TLS status, and FPM running state stay current without a manual reload
+- Install Node version UI added to the Services tab — enter a version number and click Install to run `fnm install` in the background
+
+---
+
+## [0.1.41] — 2026-03-17
+
+### Fixed
+
+- `lerd install` now uses `RestartUnit` (instead of `StartUnit`) for all services so a re-run after `lerd update` picks up the new binary and any changed quadlet files
+- Installer bats tests updated: `latest_version` mocks updated for the redirect-based version check, `certutil` added to the `--check` prerequisite mock
+
+---
+
 ## [0.1.40] — 2026-03-17
 
 ### Fixed
@@ -463,6 +577,32 @@ Initial release.
 
 ---
 
+[0.1.53]: https://github.com/geodro/lerd/compare/v0.1.52...v0.1.53
+[0.1.52]: https://github.com/geodro/lerd/compare/v0.1.51...v0.1.52
+[0.1.51]: https://github.com/geodro/lerd/compare/v0.1.50...v0.1.51
+[0.1.50]: https://github.com/geodro/lerd/compare/v0.1.49...v0.1.50
+[0.1.49]: https://github.com/geodro/lerd/compare/v0.1.48...v0.1.49
+[0.1.48]: https://github.com/geodro/lerd/compare/v0.1.47...v0.1.48
+[0.1.47]: https://github.com/geodro/lerd/compare/v0.1.46...v0.1.47
+[0.1.46]: https://github.com/geodro/lerd/compare/v0.1.45...v0.1.46
+[0.1.45]: https://github.com/geodro/lerd/compare/v0.1.44...v0.1.45
+[0.1.44]: https://github.com/geodro/lerd/compare/v0.1.43...v0.1.44
+[0.1.43]: https://github.com/geodro/lerd/compare/v0.1.42...v0.1.43
+[0.1.42]: https://github.com/geodro/lerd/compare/v0.1.41...v0.1.42
+[0.1.41]: https://github.com/geodro/lerd/compare/v0.1.40...v0.1.41
+[0.1.40]: https://github.com/geodro/lerd/compare/v0.1.39...v0.1.40
+[0.1.39]: https://github.com/geodro/lerd/compare/v0.1.38...v0.1.39
+[0.1.38]: https://github.com/geodro/lerd/compare/v0.1.37...v0.1.38
+[0.1.37]: https://github.com/geodro/lerd/compare/v0.1.36...v0.1.37
+[0.1.36]: https://github.com/geodro/lerd/compare/v0.1.35...v0.1.36
+[0.1.35]: https://github.com/geodro/lerd/compare/v0.1.34...v0.1.35
+[0.1.34]: https://github.com/geodro/lerd/compare/v0.1.33...v0.1.34
+[0.1.33]: https://github.com/geodro/lerd/compare/v0.1.32...v0.1.33
+[0.1.32]: https://github.com/geodro/lerd/compare/v0.1.31...v0.1.32
+[0.1.31]: https://github.com/geodro/lerd/compare/v0.1.30...v0.1.31
+[0.1.30]: https://github.com/geodro/lerd/compare/v0.1.29...v0.1.30
+[0.1.29]: https://github.com/geodro/lerd/compare/v0.1.28...v0.1.29
+[0.1.28]: https://github.com/geodro/lerd/compare/v0.1.27...v0.1.28
 [0.1.27]: https://github.com/geodro/lerd/compare/v0.1.26...v0.1.27
 [0.1.26]: https://github.com/geodro/lerd/compare/v0.1.25...v0.1.26
 [0.1.25]: https://github.com/geodro/lerd/compare/v0.1.24...v0.1.25
