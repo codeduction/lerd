@@ -7,6 +7,15 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.35] — 2026-03-17
+
+### Added
+
+- `install.sh` now checks for `certutil` (`nss-tools`) as a prerequisite and offers to install it automatically — without it mkcert cannot register the CA in Chrome/Firefox, causing `ERR_CERT_AUTHORITY_INVALID` on HTTPS sites
+- README documents `certutil`/`nss-tools` as a requirement with per-distro package names
+
+---
+
 ## [0.1.34] — 2026-03-17
 
 ### Fixed

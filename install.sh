@@ -95,6 +95,24 @@ check_nm() {
   fi
 }
 
+check_certutil() {
+  if command -v certutil &>/dev/null; then
+    success "certutil found (needed for mkcert CA trust in browsers)"
+    return
+  fi
+  local family; family="$(distro_family)"
+  local pkg
+  case "$family" in
+    arch)   pkg="nss" ;;
+    debian) pkg="libnss3-tools" ;;
+    fedora) pkg="nss-tools" ;;
+    suse)   pkg="mozilla-nss-tools" ;;
+    *)      pkg="nss-tools" ;;
+  esac
+  warn "certutil not found — mkcert won't be able to trust HTTPS certs in Chrome/Firefox"
+  MISSING_PKGS+=("$pkg")
+}
+
 check_podman_rootless() {
   if ! command -v podman &>/dev/null; then
     return  # already flagged by check_cmd
@@ -114,6 +132,7 @@ check_prerequisites() {
   check_nm
   check_systemd_user
   check_podman_rootless
+  check_certutil
 
   if [ ${#MISSING_PKGS[@]} -eq 0 ]; then
     success "All prerequisites met"

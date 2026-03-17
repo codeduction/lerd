@@ -36,6 +36,7 @@ Lerd bundles Nginx, PHP-FPM, and optional services (MySQL, Redis, PostgreSQL, Me
 - [NetworkManager](https://networkmanager.dev/) (for `.test` DNS)
 - `systemctl --user` functional (`loginctl enable-linger $USER` if needed)
 - `unzip` (used during install to extract fnm)
+- `certutil` / `nss-tools` (for mkcert to install the CA into Chrome/Firefox — `nss` on Arch, `libnss3-tools` on Debian/Ubuntu, `nss-tools` on Fedora)
 
 Go is only needed to build from source. The released binary has no runtime dependencies.
 
