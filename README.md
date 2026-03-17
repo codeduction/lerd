@@ -22,9 +22,15 @@ Go is only needed to build from source. The released binary has no runtime depen
 
 ### One-line installer (recommended)
 
+With curl:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/geodro/lerd/main/install.sh | bash
-# or with wget:
+```
+
+With wget:
+
+```bash
 wget -qO- https://raw.githubusercontent.com/geodro/lerd/main/install.sh | bash
 ```
 
@@ -33,34 +39,57 @@ This will:
 - Download the latest `lerd` binary for your architecture (amd64 / arm64)
 - Install it to `~/.local/bin/lerd`
 - Add `~/.local/bin` to your shell's `PATH` (bash, zsh, or fish)
+- Automatically run `lerd install` to complete environment setup
 
-Then run the one-time environment setup:
+> **DNS setup:** `lerd install` writes to `/etc/NetworkManager/dnsmasq.d/` and `/etc/NetworkManager/conf.d/` and restarts NetworkManager. This is the only step that requires `sudo`.
+
+After install, reload your shell or open a new terminal so `PATH` takes effect.
+
+### Install from a local build
+
+If you built from source and want to skip the GitHub download:
 
 ```bash
-lerd install
+make build
+bash install.sh --local ./build/lerd
 ```
 
 ### Update
 
 ```bash
-lerd-installer --update
-# or pipe again:
+lerd update
+```
+
+Fetches the latest release from GitHub, downloads the binary for your architecture, and atomically replaces the running binary. No restart needed.
+
+You can also re-run the installer:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/geodro/lerd/main/install.sh | bash -s -- --update
+```
+
+```bash
 wget -qO- https://raw.githubusercontent.com/geodro/lerd/main/install.sh | bash -s -- --update
 ```
 
 ### Uninstall
 
 ```bash
-lerd-installer --uninstall
+lerd uninstall
 ```
 
-Stops all containers, removes Quadlet units, removes the binary and PATH entry, and optionally deletes config/data directories.
+Stops all containers, disables and removes Quadlet units, removes the watcher service, removes the binary, and cleans up the `PATH` entry from your shell config. Prompts before deleting config and data directories.
+
+To skip all prompts:
+
+```bash
+lerd uninstall --force
+```
 
 ### Check prerequisites only
 
 ```bash
-lerd-installer --check
+bash install.sh --check
 ```
 
 ### From source
@@ -83,10 +112,6 @@ make install-installer  # installs lerd-installer to ~/.local/bin/
 6. Enable the `lerd-watcher` background service (auto-discovers new projects)
 7. Add `~/.local/share/lerd/bin` to your shell's `PATH`
 
-> **DNS setup:** `lerd install` writes to `/etc/NetworkManager/dnsmasq.d/` and `/etc/NetworkManager/conf.d/` and restarts NetworkManager. This is the only step that requires `sudo`.
-
-After install, reload your shell or open a new terminal so `PATH` takes effect.
-
 ---
 
 ## Quick start
@@ -108,11 +133,14 @@ That's it. Nginx is serving your project through PHP-FPM, all inside Podman cont
 
 ## Commands
 
-### Setup
+### Setup & lifecycle
 
 | Command | Description |
 |---|---|
 | `lerd install` | One-time setup: directories, network, binaries, DNS, nginx, watcher |
+| `lerd update` | Update to the latest release |
+| `lerd uninstall` | Stop all containers and remove Lerd |
+| `lerd uninstall --force` | Same, skipping all confirmation prompts |
 | `lerd dns:check` | Verify that `*.test` resolves to `127.0.0.1` |
 | `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, services, cert expiry |
 
