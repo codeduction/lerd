@@ -79,7 +79,14 @@ func runStatus(_ *cobra.Command, _ []string) error {
 				short += string(c)
 			}
 		}
+		image := "lerd-php" + short + "-fpm:local"
 		containerName := "lerd-php" + short + "-fpm"
+		if err := podman.RunSilent("image", "exists", image); err != nil {
+			fail2("PHP "+v+" FPM",
+				"image missing",
+				"lerd php:rebuild "+v)
+			continue
+		}
 		running, _ := podman.ContainerRunning(containerName)
 		if running {
 			ok2("PHP " + v + " FPM")

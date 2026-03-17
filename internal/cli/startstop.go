@@ -9,6 +9,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ensureFPMImages rebuilds any PHP FPM images that have been removed.
+func ensureFPMImages() {
+	versions, _ := phpPkg.ListInstalled()
+	for _, v := range versions {
+		short := strings.ReplaceAll(v, ".", "")
+		image := "lerd-php" + short + "-fpm:local"
+		if err := podman.RunSilent("image", "exists", image); err != nil {
+			fmt.Printf("  PHP %s image missing — rebuilding...\n", v)
+			if err := podman.BuildFPMImage(v); err != nil {
+				fmt.Printf("  WARN: could not rebuild PHP %s image: %v\n", v, err)
+			}
+		}
+	}
+}
+
 // NewStartCmd returns the start command.
 func NewStartCmd() *cobra.Command {
 	return &cobra.Command{
@@ -49,6 +64,7 @@ func installedServiceUnits() []string {
 }
 
 func runStart(_ *cobra.Command, _ []string) error {
+	ensureFPMImages()
 	units := append(coreUnits(), installedServiceUnits()...)
 	fmt.Println("Starting Lerd...")
 	for _, u := range units {

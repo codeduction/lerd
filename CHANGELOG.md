@@ -7,6 +7,15 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.66] — 2026-03-17
+
+### Fixed
+
+- `lerd start` now detects missing PHP FPM images (e.g. after `podman rmi`) and automatically rebuilds them before starting units
+- `lerd status` now reports `image missing` with a `lerd php:rebuild <version>` hint instead of just showing the container as not running
+
+---
+
 ## [0.1.65] — 2026-03-17
 
 ### Fixed
