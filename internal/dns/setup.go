@@ -253,6 +253,59 @@ func setupNetworkManager() error {
 	return nil
 }
 
+// Teardown removes all lerd DNS configuration from the system and restores normal resolution.
+func Teardown() {
+	// NM dispatcher script
+	dispatcherScript := "/etc/NetworkManager/dispatcher.d/99-lerd-dns"
+	if _, err := os.Stat(dispatcherScript); err == nil {
+		rmCmd := exec.Command("sudo", "rm", "-f", dispatcherScript)
+		rmCmd.Stdin = os.Stdin
+		rmCmd.Stdout = os.Stdout
+		rmCmd.Stderr = os.Stderr
+		rmCmd.Run() //nolint:errcheck
+	}
+
+	// systemd-resolved drop-in
+	dropin := "/etc/systemd/resolved.conf.d/lerd.conf"
+	if _, err := os.Stat(dropin); err == nil {
+		rmCmd := exec.Command("sudo", "rm", "-f", dropin)
+		rmCmd.Stdin = os.Stdin
+		rmCmd.Stdout = os.Stdout
+		rmCmd.Stderr = os.Stderr
+		rmCmd.Run() //nolint:errcheck
+	}
+
+	// NetworkManager conf and dnsmasq conf
+	for _, f := range []string{
+		"/etc/NetworkManager/conf.d/lerd.conf",
+		"/etc/NetworkManager/dnsmasq.d/lerd.conf",
+	} {
+		if _, err := os.Stat(f); err == nil {
+			rmCmd := exec.Command("sudo", "rm", "-f", f)
+			rmCmd.Stdin = os.Stdin
+			rmCmd.Stdout = os.Stdout
+			rmCmd.Stderr = os.Stderr
+			rmCmd.Run() //nolint:errcheck
+		}
+	}
+
+	// Revert per-interface resolvectl settings so NM re-applies its own DNS.
+	if iface := defaultInterface(); iface != "" {
+		revertCmd := exec.Command("sudo", "resolvectl", "revert", iface)
+		revertCmd.Stdin = os.Stdin
+		revertCmd.Stdout = os.Stdout
+		revertCmd.Stderr = os.Stderr
+		revertCmd.Run() //nolint:errcheck
+	}
+
+	// Restart the resolver to apply the removal.
+	if isNetworkManagerActive() {
+		exec.Command("sudo", "systemctl", "restart", "NetworkManager").Run() //nolint:errcheck
+	} else if isSystemdResolvedActive() {
+		exec.Command("sudo", "systemctl", "restart", "systemd-resolved").Run() //nolint:errcheck
+	}
+}
+
 // WriteDnsmasqConfig writes the lerd dnsmasq config to the given directory.
 // Upstream DNS servers are detected from the running system so they are never hardcoded.
 func WriteDnsmasqConfig(dir string) error {

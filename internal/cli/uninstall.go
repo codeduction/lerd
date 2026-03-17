@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/geodro/lerd/internal/config"
+	"github.com/geodro/lerd/internal/dns"
 	"github.com/geodro/lerd/internal/podman"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +39,13 @@ func runUninstall(force bool) error {
 		}
 	}
 
-	// 1. Discover all installed units from quadlet files on disk, plus the watcher service.
+	// 1. Remove DNS configuration before stopping containers so the resolver is restored
+	// while network is still up (avoids losing connectivity mid-uninstall).
+	step("Removing DNS configuration")
+	dns.Teardown()
+	ok()
+
+	// 2. Discover all installed units from quadlet files on disk, plus the watcher service.
 	quadletDir := config.QuadletDir()
 	var units []string
 	if entries, err := filepath.Glob(filepath.Join(quadletDir, "lerd-*.container")); err == nil {
