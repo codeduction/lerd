@@ -7,6 +7,14 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.63] — 2026-03-17
+
+### Fixed
+
+- `pecl install redis` is now also non-fatal during PHP FPM image builds — the `redis` extension (like `imagick`) doesn't yet compile against PHP 8.5's new API; both extensions are best-effort and the build succeeds regardless
+
+---
+
 ## [0.1.62] — 2026-03-17
 
 ### Fixed

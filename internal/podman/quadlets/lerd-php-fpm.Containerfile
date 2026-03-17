@@ -31,8 +31,7 @@ RUN apk add --no-cache \
         pcntl \
         exif \
         sockets \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+    && (pecl install redis && docker-php-ext-enable redis || true) \
     && (pecl install imagick && docker-php-ext-enable imagick || true) \
     && rm -rf /tmp/pear /var/cache/apk/*
 
