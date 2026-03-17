@@ -104,8 +104,22 @@ func runInstall(_ *cobra.Command, _ []string) error {
 			if phpVer == "" && cfg != nil {
 				phpVer = cfg.PHP.DefaultVersion
 			}
-			if err := nginx.GenerateVhost(site, phpVer); err != nil {
-				fmt.Printf(" [WARN %s: %v]", site.Domain, err)
+			if site.Secured {
+				// Regenerate SSL vhost in-place: write -ssl.conf then rename to .conf
+				if err := nginx.GenerateSSLVhost(site, phpVer); err != nil {
+					fmt.Printf(" [WARN %s: %v]", site.Domain, err)
+					continue
+				}
+				sslConf := filepath.Join(config.NginxConfD(), site.Domain+"-ssl.conf")
+				mainConf := filepath.Join(config.NginxConfD(), site.Domain+".conf")
+				os.Remove(mainConf)                     //nolint:errcheck
+				if err := os.Rename(sslConf, mainConf); err != nil {
+					fmt.Printf(" [WARN %s: %v]", site.Domain, err)
+				}
+			} else {
+				if err := nginx.GenerateVhost(site, phpVer); err != nil {
+					fmt.Printf(" [WARN %s: %v]", site.Domain, err)
+				}
 			}
 		}
 	}

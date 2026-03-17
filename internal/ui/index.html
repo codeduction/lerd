@@ -218,32 +218,6 @@
               </table>
             </div>
           </template>
-
-          <!-- Install Node version -->
-          <div class="mt-4 flex items-center gap-2">
-            <span class="text-xs text-gray-500">Install Node:</span>
-            <input
-              type="text"
-              x-model="nodeInstall.version"
-              @keydown.enter="installNodeVersion()"
-              placeholder="e.g. 22"
-              class="text-xs border border-gray-200 rounded px-2 py-1 w-24 focus:outline-none focus:border-blue-400"
-              :disabled="nodeInstall.installing"
-            >
-            <button
-              @click="installNodeVersion()"
-              :disabled="nodeInstall.installing || !nodeInstall.version.trim()"
-              class="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 transition-colors disabled:opacity-40 flex items-center gap-1"
-            >
-              <svg x-show="nodeInstall.installing" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-              </svg>
-              <span x-text="nodeInstall.installing ? 'Installing...' : 'Install'"></span>
-            </button>
-            <span x-show="nodeInstall.done" class="text-xs text-green-600">Installed!</span>
-            <span x-show="nodeInstall.error" class="text-xs text-red-600" x-text="nodeInstall.error"></span>
-          </div>
         </div>
 
         <!-- ===== SERVICES TAB ===== -->
@@ -335,6 +309,34 @@
               </template>
             </div>
           </template>
+
+          <!-- Install Node version -->
+          <div class="mt-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Install Node version</h3>
+            <div class="flex items-center gap-2">
+              <input
+                type="text"
+                x-model="nodeInstall.version"
+                @keydown.enter="installNodeVersion()"
+                placeholder="e.g. 22"
+                class="text-sm border border-gray-200 rounded px-3 py-1.5 w-28 focus:outline-none focus:border-blue-400"
+                :disabled="nodeInstall.installing"
+              >
+              <button
+                @click="installNodeVersion()"
+                :disabled="nodeInstall.installing || !nodeInstall.version.trim()"
+                class="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1.5 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+              >
+                <svg x-show="nodeInstall.installing" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span x-text="nodeInstall.installing ? 'Installing...' : 'Install'"></span>
+              </button>
+              <span x-show="nodeInstall.done" class="text-sm text-green-600">Installed!</span>
+              <span x-show="nodeInstall.error" class="text-sm text-red-600" x-text="nodeInstall.error"></span>
+            </div>
+          </div>
         </div>
 
         <!-- ===== SYSTEM TAB ===== -->
@@ -507,6 +509,7 @@ function lerdApp() {
     },
     _statusInterval: null,
     _sitesInterval: null,
+    _sitesLoaded: false,
     nodeInstall: { version: '', installing: false, error: '', done: false },
     logs: {
       open: false,
@@ -582,15 +585,33 @@ function lerdApp() {
     },
 
     async loadSites() {
-      this.sitesLoading = true;
+      const firstLoad = !this._sitesLoaded;
+      if (firstLoad) this.sitesLoading = true;
       try {
         const res = await fetch('/api/sites');
         const raw = await res.json();
-        this.sites = raw.map(s => ({ ...s, tlsLoading: false, tlsError: '', versionLoading: false }));
+        this._sitesLoaded = true;
+        if (firstLoad) {
+          this.sites = raw.map(s => ({ ...s, tlsLoading: false, tlsError: '', versionLoading: false }));
+        } else {
+          // Update data in-place to avoid full table re-render
+          raw.forEach(s => {
+            const e = this.sites.find(x => x.domain === s.domain);
+            if (e) {
+              e.php_version = s.php_version;
+              e.node_version = s.node_version;
+              e.tls = s.tls;
+              e.fpm_running = s.fpm_running;
+            } else {
+              this.sites.push({ ...s, tlsLoading: false, tlsError: '', versionLoading: false });
+            }
+          });
+          this.sites = this.sites.filter(e => raw.some(s => s.domain === e.domain));
+        }
       } catch (_) {
-        this.sites = [];
+        if (firstLoad) this.sites = [];
       } finally {
-        this.sitesLoading = false;
+        if (firstLoad) this.sitesLoading = false;
       }
     },
 
