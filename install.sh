@@ -227,13 +227,16 @@ download_binary() {
   local url="https://github.com/${REPO}/releases/download/v${version}/${filename}"
   local tmp; tmp="$(mktemp -d)"
 
-  info "Downloading lerd v${version} (${arch}) via $(_download_tool) ..."
-  if ! fetch "$url" "${tmp}/${filename}" 2>/dev/null; then
+  info "Downloading lerd v${version} (${arch}) via $(_download_tool) ..." >&2
+  if ! fetch "$url" "${tmp}/${filename}"; then
     rm -rf "$tmp"
     die "Download failed (HTTP 404).\nNo release v${version} found at:\n  ${url}\n\nIf you built lerd locally, use:\n  bash install.sh --local ./build/lerd"
   fi
 
-  tar -xzf "${tmp}/${filename}" -C "$tmp"
+  if ! tar -xzf "${tmp}/${filename}" -C "$tmp" >&2 2>&1; then
+    rm -rf "$tmp"
+    die "Failed to extract archive: ${filename}"
+  fi
   echo "${tmp}/lerd"
 }
 
