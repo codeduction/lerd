@@ -188,7 +188,7 @@
           <template x-if="!servicesLoading">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <template x-for="svc in services" :key="svc.name">
-                <div class="bg-white rounded-lg border border-gray-200 p-4 flex flex-col gap-3">
+                <div class="bg-white rounded-lg border border-gray-200 p-4 flex flex-col gap-3" :class="svc.error ? 'border-red-300' : ''">
                   <!-- Name + status indicator -->
                   <div class="flex items-center justify-between">
                     <span class="font-semibold text-gray-800" x-text="capitalize(svc.name)"></span>
@@ -206,15 +206,11 @@
                         :disabled="svc.loading"
                         class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded px-3 py-1.5 transition-colors disabled:opacity-50"
                       >
-                        <template x-if="svc.loading">
-                          <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                          </svg>
-                        </template>
-                        <template x-if="!svc.loading">
-                          <span>Start</span>
-                        </template>
+                        <svg x-show="svc.loading" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span x-show="!svc.loading">Start</span>
                       </button>
                     </template>
                     <template x-if="svc.status === 'active'">
@@ -223,15 +219,11 @@
                         :disabled="svc.loading"
                         class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded px-3 py-1.5 transition-colors disabled:opacity-50"
                       >
-                        <template x-if="svc.loading">
-                          <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                          </svg>
-                        </template>
-                        <template x-if="!svc.loading">
-                          <span>Stop</span>
-                        </template>
+                        <svg x-show="svc.loading" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span x-show="!svc.loading">Stop</span>
                       </button>
                     </template>
 
@@ -244,9 +236,23 @@
                     </button>
                   </div>
 
+                  <!-- Success feedback -->
+                  <div x-show="svc.flash" class="text-xs text-center text-green-700 bg-green-50 rounded px-2 py-1" x-text="svc.flash"></div>
+
                   <!-- Copy feedback -->
-                  <template x-if="svc.copied">
-                    <div class="text-xs text-center text-green-600 bg-green-50 rounded px-2 py-1">Copied!</div>
+                  <div x-show="svc.copied" class="text-xs text-center text-green-600 bg-green-50 rounded px-2 py-1">Copied to clipboard!</div>
+
+                  <!-- Error feedback -->
+                  <template x-if="svc.error">
+                    <div class="space-y-1">
+                      <div class="text-xs font-medium text-red-700 bg-red-50 rounded px-2 py-1" x-text="svc.error"></div>
+                      <template x-if="svc.logs">
+                        <details class="text-xs">
+                          <summary class="cursor-pointer text-gray-500 hover:text-gray-700 px-1">Show logs</summary>
+                          <pre class="mt-1 bg-gray-900 text-gray-100 rounded p-2 overflow-x-auto text-[10px] leading-relaxed whitespace-pre-wrap" x-text="svc.logs"></pre>
+                        </details>
+                      </template>
+                    </div>
                   </template>
                 </div>
               </template>
@@ -437,7 +443,7 @@ function lerdApp() {
       try {
         const res = await fetch('/api/services');
         const data = await res.json();
-        this.services = data.map(s => ({ ...s, loading: false, copied: false }));
+        this.services = data.map(s => ({ ...s, loading: false, copied: false, flash: '', error: '', logs: '' }));
       } catch (_) {
         this.services = [];
       } finally {
@@ -447,12 +453,24 @@ function lerdApp() {
 
     async toggleService(svc, action) {
       svc.loading = true;
+      svc.error = '';
+      svc.logs = '';
+      svc.flash = '';
       try {
         const res = await fetch(`/api/services/${svc.name}/${action}`, { method: 'POST' });
-        const updated = await res.json();
-        svc.status = updated.status;
-        svc.env_vars = updated.env_vars;
-      } catch (_) {} finally {
+        const data = await res.json();
+        svc.status = data.status;
+        svc.env_vars = data.env_vars;
+        if (data.ok) {
+          svc.flash = action === 'start' ? 'Started successfully' : 'Stopped';
+          setTimeout(() => { svc.flash = ''; }, 3000);
+        } else {
+          svc.error = data.error || 'Unknown error';
+          svc.logs = data.logs || '';
+        }
+      } catch (e) {
+        svc.error = e.message || 'Request failed';
+      } finally {
         svc.loading = false;
       }
     },

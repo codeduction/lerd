@@ -255,6 +255,14 @@ func handleServices(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, services)
 }
 
+// ServiceActionResponse wraps the service state plus any error details.
+type ServiceActionResponse struct {
+	ServiceResponse
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	Logs  string `json:"logs,omitempty"`
+}
+
 func handleServiceAction(w http.ResponseWriter, r *http.Request) {
 	// path: /api/services/{name}/start or /api/services/{name}/stop
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/services/"), "/")
@@ -287,6 +295,17 @@ func handleServiceAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "start":
+		// Ensure quadlet file exists and systemd knows about it before starting
+		if err := ensureServiceQuadlet(name); err != nil {
+			resp := ServiceActionResponse{
+				ServiceResponse: buildServiceResponse(name),
+				OK:              false,
+				Error:           err.Error(),
+				Logs:            serviceRecentLogs(unit),
+			}
+			writeJSON(w, resp)
+			return
+		}
 		opErr = podman.StartUnit(unit)
 	case "stop":
 		opErr = podman.StopUnit(unit)
@@ -296,11 +315,39 @@ func handleServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if opErr != nil {
-		http.Error(w, opErr.Error(), http.StatusInternalServerError)
+		writeJSON(w, ServiceActionResponse{
+			ServiceResponse: buildServiceResponse(name),
+			OK:              false,
+			Error:           opErr.Error(),
+			Logs:            serviceRecentLogs(unit),
+		})
 		return
 	}
 
-	writeJSON(w, buildServiceResponse(name))
+	writeJSON(w, ServiceActionResponse{
+		ServiceResponse: buildServiceResponse(name),
+		OK:              true,
+	})
+}
+
+// ensureServiceQuadlet writes the quadlet for a service and reloads systemd.
+func ensureServiceQuadlet(name string) error {
+	quadletName := "lerd-" + name
+	content, err := podman.GetQuadletTemplate(quadletName + ".container")
+	if err != nil {
+		return fmt.Errorf("unknown service %q", name)
+	}
+	if err := podman.WriteQuadlet(quadletName, content); err != nil {
+		return fmt.Errorf("writing quadlet for %s: %w", name, err)
+	}
+	return podman.DaemonReload()
+}
+
+// serviceRecentLogs returns the last 20 lines of journalctl output for a unit.
+func serviceRecentLogs(unit string) string {
+	cmd := exec.Command("journalctl", "--user", "-u", unit+".service", "-n", "20", "--no-pager", "--output=short")
+	out, _ := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out))
 }
 
 // VersionResponse is the response for GET /api/version.

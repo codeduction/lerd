@@ -7,6 +7,16 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.23] — 2026-03-17
+
+### Fixed
+
+- Dashboard service start now writes the Quadlet file and reloads systemd before calling `systemctl start`, fixing "Unit not found" error on first use
+- Service action errors are now returned as JSON with the error message and last 20 lines of `journalctl` logs
+- Frontend shows a loading spinner while toggling, "Started successfully" / "Stopped" flash on success, and an inline error with expandable logs on failure
+
+---
+
 ## [0.1.22] — 2026-03-17
 
 ### Fixed
@@ -300,6 +310,7 @@ Initial release.
 
 ---
 
+[0.1.23]: https://github.com/geodro/lerd/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/geodro/lerd/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/geodro/lerd/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/geodro/lerd/compare/v0.1.19...v0.1.20
