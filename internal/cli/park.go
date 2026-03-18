@@ -194,20 +194,12 @@ func ensureFPMQuadlet(phpVersion string) error {
 	}
 	_ = podman.StoreFPMHash()
 
-	tmplContent, err := podman.GetQuadletTemplate("lerd-php-fpm.container.tmpl")
-	if err != nil {
-		return err
+	// Ensure the xdebug ini exists (mode=off by default).
+	if _, err := os.Stat(config.PHPConfFile(phpVersion)); os.IsNotExist(err) {
+		_ = podman.WriteXdebugIni(phpVersion, false)
 	}
 
-	// Simple string replacement for the template
-	content := strings.ReplaceAll(tmplContent, "{{.Version}}", phpVersion)
-	content = strings.ReplaceAll(content, "{{.VersionShort}}", versionShort)
-
-	if err := podman.WriteQuadlet(unitName, content); err != nil {
-		return err
-	}
-
-	if err := podman.DaemonReload(); err != nil {
+	if err := podman.WriteFPMQuadlet(phpVersion); err != nil {
 		return err
 	}
 

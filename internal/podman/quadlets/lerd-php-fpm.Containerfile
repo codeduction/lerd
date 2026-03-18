@@ -50,3 +50,7 @@ RUN apk update && apk add --no-cache \
 
 # Override pool: run workers as root, log errors to stderr
 RUN printf '[www]\nuser=root\ngroup=root\ncatch_workers_output=yes\nphp_flag[display_errors]=off\nphp_admin_value[error_log]=/proc/self/fd/2\nphp_admin_flag[log_errors]=on\n' > /usr/local/etc/php-fpm.d/zz-lerd.conf
+
+# Xdebug always installed; mode controlled via mounted ini (mode=off by default)
+RUN pecl install xdebug && docker-php-ext-enable xdebug \
+    && rm -rf /tmp/pear /var/cache/apk/*

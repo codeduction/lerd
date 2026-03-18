@@ -64,21 +64,40 @@ func runLink(args []string, customDomain string) error {
 		nodeVersion = cfg.Node.DefaultVersion
 	}
 
+	// Preserve Secured state if the site is already registered.
+	secured := false
+	if existing, err := config.FindSite(name); err == nil {
+		secured = existing.Secured
+	}
+
 	site := config.Site{
 		Name:        name,
 		Domain:      domain,
 		Path:        cwd,
 		PHPVersion:  phpVersion,
 		NodeVersion: nodeVersion,
-		Secured:     false,
+		Secured:     secured,
 	}
 
 	if err := config.AddSite(site); err != nil {
 		return fmt.Errorf("registering site: %w", err)
 	}
 
-	if err := nginx.GenerateVhost(site, phpVersion); err != nil {
-		return fmt.Errorf("generating vhost: %w", err)
+	if secured {
+		// Regenerate SSL vhost in place, reusing the existing cert.
+		if err := nginx.GenerateSSLVhost(site, phpVersion); err != nil {
+			return fmt.Errorf("generating SSL vhost: %w", err)
+		}
+		sslConf := filepath.Join(config.NginxConfD(), site.Domain+"-ssl.conf")
+		mainConf := filepath.Join(config.NginxConfD(), site.Domain+".conf")
+		_ = os.Remove(mainConf)
+		if err := os.Rename(sslConf, mainConf); err != nil {
+			return fmt.Errorf("installing SSL vhost: %w", err)
+		}
+	} else {
+		if err := nginx.GenerateVhost(site, phpVersion); err != nil {
+			return fmt.Errorf("generating vhost: %w", err)
+		}
 	}
 
 	if err := ensureFPMQuadlet(phpVersion); err != nil {

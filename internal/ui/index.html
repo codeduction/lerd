@@ -521,29 +521,46 @@
               </div>
               <h3 class="font-semibold text-gray-900 dark:text-white">PHP-FPM</h3>
             </div>
-            <template x-if="!systemStatus.php_fpms || systemStatus.php_fpms.length === 0">
-              <div>
-                <p class="text-sm text-gray-500">No PHP versions installed.</p>
-                <p class="text-xs text-gray-400 mt-1">Run <code class="bg-gray-100 dark:bg-white/5 px-1 rounded text-gray-500">lerd use 8.4</code> to install.</p>
-              </div>
-            </template>
-            <ul class="space-y-2" x-show="systemStatus.php_fpms && systemStatus.php_fpms.length > 0">
-              <template x-for="fpm in systemStatus.php_fpms" :key="fpm.version">
-                <li class="flex items-center justify-between">
-                  <span class="text-sm text-gray-500">PHP <span x-text="fpm.version" class="text-gray-700 dark:text-gray-300 font-medium"></span></span>
-                  <template x-if="fpm.running">
-                    <span class="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500">
+            <div x-show="phpVersions.length === 0">
+              <p class="text-sm text-gray-500">No PHP versions installed.</p>
+              <p class="text-xs text-gray-400 mt-1">Run <code class="bg-gray-100 dark:bg-white/5 px-1 rounded text-gray-500">lerd use 8.4</code> to install.</p>
+            </div>
+            <div x-show="phpVersions.length > 0" class="space-y-2.5">
+              <template x-for="v in phpVersions" :key="v">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-sm text-gray-500 shrink-0">PHP <span x-text="v" class="text-gray-700 dark:text-gray-300 font-medium"></span></span>
+                  <div class="flex items-center gap-3 ml-auto">
+                    <!-- Xdebug toggle -->
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-[10px] text-gray-400">Xdebug</span>
+                      <button
+                        type="button"
+                        @click.prevent="toggleXdebug(v)"
+                        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none"
+                        :class="xdebugEnabled[v] ? 'bg-purple-500' : 'bg-gray-300 dark:bg-lerd-muted'"
+                        :title="xdebugEnabled[v] ? 'Disable Xdebug' : 'Enable Xdebug (rebuilds image)'"
+                      >
+                        <span
+                          class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200"
+                          :class="xdebugEnabled[v] ? 'translate-x-4' : 'translate-x-1'"
+                        ></span>
+                      </button>
+                      <svg x-show="xdebugLoading[v]" style="display:none" class="animate-spin w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                      </svg>
+                    </div>
+                    <!-- Running status -->
+                    <span x-show="fpmRunning(v)" class="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500" style="display:none">
                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>running
                     </span>
-                  </template>
-                  <template x-if="!fpm.running">
-                    <span class="inline-flex items-center gap-1.5 text-xs text-red-500">
+                    <span x-show="!fpmRunning(v)" class="inline-flex items-center gap-1.5 text-xs text-red-500">
                       <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>stopped
                     </span>
-                  </template>
-                </li>
+                  </div>
+                </div>
               </template>
-            </ul>
+            </div>
           </div>
 
           <!-- Autostart card -->
@@ -655,6 +672,8 @@ function lerdApp() {
     nodeInstall: { version: '', installing: false, error: '', done: false },
     autostartEnabled: false,
     autostartLoading: false,
+    xdebugEnabled: {},
+    xdebugLoading: {},
     logs: {
       open: false,
       container: '',
@@ -1000,11 +1019,25 @@ function lerdApp() {
 
     clearLogs() { this.logs.lines = []; },
 
+    fpmRunning(v) {
+      const fpms = (this.systemStatus && this.systemStatus.php_fpms) || [];
+      const fpm = fpms.find(f => f.version === v);
+      return fpm ? fpm.running : false;
+    },
+
     async loadStatus() {
       this.statusLoading = (Object.keys(this.systemStatus).length === 0);
       try {
         const res = await fetch('/api/status');
-        this.systemStatus = await res.json();
+        const data = await res.json();
+        this.systemStatus = data;
+        const next = { ...this.xdebugEnabled };
+        (data.php_fpms || []).forEach(fpm => {
+          if (!this.xdebugLoading[fpm.version]) {
+            next[fpm.version] = fpm.xdebug_enabled;
+          }
+        });
+        this.xdebugEnabled = next;
       } catch (_) {} finally {
         this.statusLoading = false;
       }
@@ -1016,6 +1049,22 @@ function lerdApp() {
         const data = await res.json();
         this.autostartEnabled = data.autostart_on_login || false;
       } catch (_) {}
+    },
+
+    async toggleXdebug(version) {
+      const current = !!this.xdebugEnabled[version];
+      const action = current ? 'off' : 'on';
+      this.xdebugEnabled = { ...this.xdebugEnabled, [version]: !current };
+      this.xdebugLoading = { ...this.xdebugLoading, [version]: true };
+      try {
+        const res = await fetch(`/api/xdebug/${version}/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) this.xdebugEnabled = { ...this.xdebugEnabled, [version]: current };
+      } catch (_) {
+        this.xdebugEnabled = { ...this.xdebugEnabled, [version]: current };
+      } finally {
+        this.xdebugLoading = { ...this.xdebugLoading, [version]: false };
+      }
     },
 
     async toggleAutostart() {

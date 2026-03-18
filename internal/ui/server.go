@@ -123,6 +123,7 @@ func Start(currentVersion string) error {
 	mux.HandleFunc("/api/queue/", withCORS(handleQueueLogs))
 	mux.HandleFunc("/api/settings", withCORS(handleSettings))
 	mux.HandleFunc("/api/settings/autostart", withCORS(handleSettingsAutostart))
+	mux.HandleFunc("/api/xdebug/", withCORS(handleXdebugAction))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML) //nolint:errcheck
@@ -167,8 +168,9 @@ type ServiceCheck struct {
 }
 
 type PHPStatus struct {
-	Version string `json:"version"`
-	Running bool   `json:"running"`
+	Version        string `json:"version"`
+	Running        bool   `json:"running"`
+	XdebugEnabled  bool   `json:"xdebug_enabled"`
 }
 
 func handleStatus(w http.ResponseWriter, _ *http.Request) {
@@ -186,7 +188,8 @@ func handleStatus(w http.ResponseWriter, _ *http.Request) {
 	for _, v := range versions {
 		short := strings.ReplaceAll(v, ".", "")
 		running, _ := podman.ContainerRunning("lerd-php" + short + "-fpm")
-		phpStatuses = append(phpStatuses, PHPStatus{Version: v, Running: running})
+		xdebugEnabled := cfg != nil && cfg.IsXdebugEnabled(v)
+		phpStatuses = append(phpStatuses, PHPStatus{Version: v, Running: running, XdebugEnabled: xdebugEnabled})
 	}
 
 	writeJSON(w, StatusResponse{
@@ -776,6 +779,56 @@ func handleSettingsAutostart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, map[string]any{"ok": true, "autostart_on_login": body.Enabled})
+}
+
+func handleXdebugAction(w http.ResponseWriter, r *http.Request) {
+	// path: /api/xdebug/{version}/on or /api/xdebug/{version}/off
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/xdebug/"), "/")
+	if len(parts) != 2 || r.Method != http.MethodPost {
+		http.NotFound(w, r)
+		return
+	}
+	version, action := parts[0], parts[1]
+	if !validVersion.MatchString(version) || (action != "on" && action != "off") {
+		http.NotFound(w, r)
+		return
+	}
+	enable := action == "on"
+
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if cfg.IsXdebugEnabled(version) == enable {
+		writeJSON(w, map[string]any{"ok": true, "xdebug_enabled": enable})
+		return
+	}
+
+	cfg.SetXdebug(version, enable)
+	if err := config.SaveGlobal(cfg); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": "saving config: " + err.Error()})
+		return
+	}
+
+	if err := podman.WriteXdebugIni(version, enable); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": "writing xdebug ini: " + err.Error()})
+		return
+	}
+
+	// Update quadlet (adds volume mount if not already present).
+	if err := podman.WriteFPMQuadlet(version); err != nil {
+		fmt.Printf("[WARN] updating quadlet for PHP %s: %v\n", version, err)
+	}
+
+	short := strings.ReplaceAll(version, ".", "")
+	unit := "lerd-php" + short + "-fpm"
+	if err := podman.RestartUnit(unit); err != nil {
+		fmt.Printf("[WARN] restart %s: %v\n", unit, err)
+	}
+
+	writeJSON(w, map[string]any{"ok": true, "xdebug_enabled": enable})
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request, _ string) {

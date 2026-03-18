@@ -85,3 +85,8 @@ func SystemdUserDir() string {
 func PHPImageHashFile() string {
 	return filepath.Join(DataDir(), "php-image-hash")
 }
+
+// PHPConfFile returns the host path for the per-version xdebug ini file.
+func PHPConfFile(version string) string {
+	return filepath.Join(DataDir(), "php", version, "99-xdebug.ini")
+}

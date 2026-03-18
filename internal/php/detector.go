@@ -13,21 +13,12 @@ import (
 
 // DetectVersion detects the PHP version for the given directory.
 // It checks, in order:
-//  1. .php-version file
-//  2. .lerd.yaml php_version field
-//  3. composer.json require.php semver
+//  1. .lerd.yaml php_version field (explicit lerd override)
+//  2. composer.json require.php semver (project requirement)
+//  3. .php-version file (generic tooling hint, lowest priority)
 //  4. global config default
 func DetectVersion(dir string) (string, error) {
-	// 1. .php-version file
-	phpVersionFile := filepath.Join(dir, ".php-version")
-	if data, err := os.ReadFile(phpVersionFile); err == nil {
-		v := strings.TrimSpace(string(data))
-		if v != "" {
-			return v, nil
-		}
-	}
-
-	// 2. .lerd.yaml
+	// 1. .lerd.yaml — explicit lerd override takes top priority
 	lerdYaml := filepath.Join(dir, ".lerd.yaml")
 	if data, err := os.ReadFile(lerdYaml); err == nil {
 		var lerdCfg struct {
@@ -38,7 +29,7 @@ func DetectVersion(dir string) (string, error) {
 		}
 	}
 
-	// 3. composer.json require.php
+	// 2. composer.json require.php — authoritative project requirement
 	composerFile := filepath.Join(dir, "composer.json")
 	if data, err := os.ReadFile(composerFile); err == nil {
 		var composer struct {
@@ -50,6 +41,15 @@ func DetectVersion(dir string) (string, error) {
 					return v, nil
 				}
 			}
+		}
+	}
+
+	// 3. .php-version file — generic tooling hint
+	phpVersionFile := filepath.Join(dir, ".php-version")
+	if data, err := os.ReadFile(phpVersionFile); err == nil {
+		v := strings.TrimSpace(string(data))
+		if v != "" {
+			return v, nil
 		}
 	}
 

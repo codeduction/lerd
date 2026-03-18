@@ -39,6 +39,11 @@ func resolveSiteName(args []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Look up by path first so directory names like "astrolov.com" resolve
+	// correctly to their registered site name (e.g. "astrolov").
+	if site, err := config.FindSiteByPath(cwd); err == nil {
+		return site.Name, nil
+	}
 	return filepath.Base(cwd), nil
 }
 

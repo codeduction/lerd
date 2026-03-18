@@ -191,6 +191,14 @@ The UI gives you a visual overview of your entire Lerd environment without touch
 | `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, services, cert expiry |
 | `lerd logs [-f] [target]` | Show logs for the current project's FPM container, `nginx`, a service name, or a PHP version |
 
+### Project setup
+
+| Command | Description |
+|---|---|
+| `lerd setup` | Interactive project bootstrap — checkbox list of steps to run in sequence |
+| `lerd setup --all` | Run all setup steps without prompting (useful in CI) |
+| `lerd setup --skip-open` | Same as above but don't open the browser at the end |
+
 ### Site management
 
 | Command | Description |
@@ -202,6 +210,7 @@ The UI gives you a visual overview of your entire Lerd environment without touch
 | `lerd unlink [name]` | Stop serving the site; for parked dirs keeps the registry entry so the watcher won't re-register it |
 | `lerd sites` | Table view of all registered sites |
 | `lerd open [name]` | Open the site in the default browser |
+| `lerd share [name]` | Expose the site publicly via ngrok or Expose (auto-detected) |
 | `lerd secure [name]` | Issue a mkcert TLS cert and enable HTTPS for a site — updates `APP_URL` in `.env` |
 | `lerd unsecure [name]` | Remove TLS and switch back to HTTP — updates `APP_URL` in `.env` |
 | `lerd env` | Configure `.env` for the current project with lerd service connection settings |
@@ -218,8 +227,20 @@ The UI gives you a visual overview of your entire Lerd environment without touch
 | `lerd isolate <version>` | Pin PHP version for cwd — writes `.php-version` |
 | `lerd php:list` | List all installed PHP-FPM versions |
 | `lerd php:rebuild` | Force-rebuild all installed PHP-FPM images (run after `lerd update` if needed) |
+| `lerd fetch [version...]` | Pre-build PHP FPM images for the given (or all supported) versions so first use isn't slow |
 | `lerd php [args...]` | Run PHP in the project's container |
 | `lerd artisan [args...]` | Run `php artisan` in the project's container |
+| `lerd xdebug on [version]` | Enable Xdebug for a PHP version — rebuilds the FPM image and restarts the container |
+| `lerd xdebug off [version]` | Disable Xdebug — rebuilds without Xdebug and restarts |
+| `lerd xdebug status` | Show Xdebug enabled/disabled for all installed PHP versions |
+
+If no version is given, the version is resolved from the current directory (`.php-version` or `composer.json`, falling back to the global default).
+
+Xdebug is configured with:
+- `xdebug.mode=debug`
+- `xdebug.start_with_request=yes`
+- `xdebug.client_host=host.containers.internal` (reaches your host IDE from the container)
+- `xdebug.client_port=9003`
 
 ### Node
 
@@ -241,6 +262,32 @@ The UI gives you a visual overview of your entire Lerd environment without touch
 | `lerd service list` | Show all services and their current state |
 
 Available services: `mysql`, `redis`, `postgres`, `meilisearch`, `minio`, `mailpit`, `soketi`.
+
+### Database shortcuts
+
+Reads `DB_CONNECTION`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` from the project's `.env` and runs the appropriate command inside the service container.
+
+| Command | Description |
+|---|---|
+| `lerd db:import <file.sql>` | Import a SQL dump into the current site's database |
+| `lerd db:export [-o file.sql]` | Export the current site's database (defaults to `<database>.sql`) |
+| `lerd db import <file.sql>` | Same as `db:import` (subcommand form) |
+| `lerd db export` | Same as `db:export` (subcommand form) |
+
+Supports `DB_CONNECTION=mysql` / `mariadb` (via `lerd-mysql`) and `pgsql` / `postgres` (via `lerd-postgres`).
+
+### Sharing sites
+
+`lerd share` exposes the current site via a public tunnel. Requires [ngrok](https://ngrok.com/download) or [Expose](https://expose.dev) to be installed.
+
+| Command | Description |
+|---|---|
+| `lerd share` | Share the current site (auto-detects ngrok or Expose) |
+| `lerd share <name>` | Share a named site |
+| `lerd share --ngrok` | Force ngrok |
+| `lerd share --expose` | Force Expose |
+
+The tunnel forwards to nginx's local port with the site's domain as the `Host` header, so nginx routes the request to the right vhost even though the incoming request has the public tunnel URL as its host.
 
 ### Queue workers
 
@@ -286,9 +333,9 @@ lerd completion fish   # add to ~/.config/fish/completions/lerd.fish
 
 When serving a request, Lerd picks the PHP version for a project in this order:
 
-1. `.php-version` file in the project root (plain text, e.g. `8.2`)
-2. `.lerd.yaml` in the project root — `php_version` field
-3. `composer.json` — `require.php` constraint (e.g. `^8.2` → `8.2`)
+1. `.lerd.yaml` in the project root — `php_version` field (explicit lerd override)
+2. `composer.json` — `require.php` constraint (e.g. `^8.4` → `8.4`)
+3. `.php-version` file in the project root (plain text, e.g. `8.2`)
 4. Global default in `~/.config/lerd/config.yaml`
 
 To pin a project permanently:
@@ -341,6 +388,65 @@ lerd unsecure
 ```
 
 Certificates are stored in `~/.local/share/lerd/certs/sites/`.
+
+---
+
+## Project bootstrap — `lerd setup`
+
+`lerd setup` automates the standard steps for getting a fresh Laravel clone running locally. Run it from the project root:
+
+```bash
+cd ~/Projects/my-app
+lerd setup
+```
+
+A checkbox list appears with all available steps pre-selected based on the current project state. Toggle steps with space, confirm with enter, then watch them run sequentially.
+
+```
+→ Registering site...
+Linked: my-app -> my-app.test (PHP 8.4, Node 24)
+
+? Select setup steps to run:
+  ◉ composer install
+  ◉ npm ci
+  ◉ lerd env
+  ◯ lerd mcp:inject
+  ◉ php artisan migrate
+  ◯ php artisan db:seed
+  ◉ npm run build
+  ◯ lerd secure
+  ◉ lerd open
+```
+
+**`lerd link` always runs first** (before the checkbox UI appears) to ensure the site is registered with the correct PHP version. This is mandatory — it handles both freshly cloned projects and projects already auto-registered by a parked directory.
+
+**Smart defaults:**
+
+| Step | Default | Condition |
+|---|---|---|
+| `composer install` | ✅ on | only if `vendor/` is missing |
+| `npm ci` | ✅ on | only if `node_modules/` is missing and `package.json` exists |
+| `lerd env` | ✅ on | always |
+| `lerd mcp:inject` | ☐ off | opt-in |
+| `php artisan migrate` | ✅ on | always |
+| `php artisan db:seed` | ☐ off | opt-in |
+| `npm run build` | ✅ on | only if `package.json` exists |
+| `lerd secure` | ☐ off | opt-in |
+| `lerd open` | ✅ on | always |
+
+If a step fails, you are prompted to continue or abort:
+
+```
+✗ migrate failed: exit status 1
+  Continue with remaining steps? [y/N]:
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--all` / `-a` | Select all steps without showing the prompt (CI/automation) |
+| `--skip-open` | Skip opening the browser at the end |
 
 ---
 

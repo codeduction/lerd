@@ -22,6 +22,7 @@ server {
         fastcgi_pass $fpm:9000;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param HTTPS on;
         include fastcgi_params;
     }
 

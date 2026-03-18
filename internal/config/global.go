@@ -17,7 +17,8 @@ type ServiceConfig struct {
 // GlobalConfig is the top-level lerd configuration.
 type GlobalConfig struct {
 	PHP struct {
-		DefaultVersion string `yaml:"default_version" mapstructure:"default_version"`
+		DefaultVersion string          `yaml:"default_version" mapstructure:"default_version"`
+		XdebugEnabled  map[string]bool `yaml:"xdebug_enabled"  mapstructure:"xdebug_enabled"`
 	} `yaml:"php" mapstructure:"php"`
 	Node struct {
 		DefaultVersion string `yaml:"default_version" mapstructure:"default_version"`
@@ -88,7 +89,7 @@ func defaultConfig() *GlobalConfig {
 func LoadGlobal() (*GlobalConfig, error) {
 	cfgFile := GlobalConfigFile()
 
-	v := viper.New()
+	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
 	v.SetConfigFile(cfgFile)
 	v.SetConfigType("yaml")
 
@@ -104,6 +105,23 @@ func LoadGlobal() (*GlobalConfig, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// IsXdebugEnabled returns true if Xdebug is enabled for the given PHP version.
+func (c *GlobalConfig) IsXdebugEnabled(version string) bool {
+	return c.PHP.XdebugEnabled[version]
+}
+
+// SetXdebug enables or disables Xdebug for the given PHP version.
+func (c *GlobalConfig) SetXdebug(version string, enabled bool) {
+	if c.PHP.XdebugEnabled == nil {
+		c.PHP.XdebugEnabled = map[string]bool{}
+	}
+	if !enabled {
+		delete(c.PHP.XdebugEnabled, version)
+		return
+	}
+	c.PHP.XdebugEnabled[version] = true
 }
 
 // SaveGlobal writes the configuration to config.yaml.

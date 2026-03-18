@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/geodro/lerd/internal/config"
@@ -100,4 +101,39 @@ func buildFPMImage(version string, force bool) error {
 
 	fmt.Printf("  PHP %s image built successfully.\n", version)
 	return nil
+}
+
+// WriteXdebugIni writes the per-version xdebug ini to the host config dir.
+// The file is volume-mounted into the FPM container at /usr/local/etc/php/conf.d/99-xdebug.ini.
+func WriteXdebugIni(version string, enabled bool) error {
+	path := config.PHPConfFile(version)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	mode := "off"
+	if enabled {
+		mode = "debug"
+	}
+	content := fmt.Sprintf("[xdebug]\nxdebug.mode=%s\nxdebug.start_with_request=yes\nxdebug.client_host=host.containers.internal\nxdebug.client_port=9003\n", mode)
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// WriteFPMQuadlet writes (or overwrites) the systemd quadlet for a PHP-FPM version
+// and reloads the systemd daemon. It also ensures the xdebug ini file exists.
+func WriteFPMQuadlet(version string) error {
+	short := strings.ReplaceAll(version, ".", "")
+	unitName := "lerd-php" + short + "-fpm"
+
+	tmplContent, err := GetQuadletTemplate("lerd-php-fpm.container.tmpl")
+	if err != nil {
+		return err
+	}
+	content := strings.ReplaceAll(tmplContent, "{{.Version}}", version)
+	content = strings.ReplaceAll(content, "{{.VersionShort}}", short)
+	content = strings.ReplaceAll(content, "{{.XdebugIniPath}}", config.PHPConfFile(version))
+
+	if err := WriteQuadlet(unitName, content); err != nil {
+		return err
+	}
+	return DaemonReload()
 }
