@@ -1,0 +1,11 @@
+[Unit]
+Description=Lerd Auto-start on Login
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/lerd start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

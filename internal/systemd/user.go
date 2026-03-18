@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/geodro/lerd/internal/config"
 )
@@ -37,4 +38,21 @@ func StartService(name string) error {
 		return fmt.Errorf("start %s: %w\n%s", name, err, out)
 	}
 	return nil
+}
+
+// DisableService disables a systemd user service.
+func DisableService(name string) error {
+	cmd := exec.Command("systemctl", "--user", "disable", name)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("disable %s: %w\n%s", name, err, out)
+	}
+	return nil
+}
+
+// IsServiceEnabled returns true if the systemd user service is enabled.
+func IsServiceEnabled(name string) bool {
+	cmd := exec.Command("systemctl", "--user", "is-enabled", name)
+	out, _ := cmd.Output()
+	return strings.TrimSpace(string(out)) == "enabled"
 }

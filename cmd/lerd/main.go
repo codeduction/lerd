@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/geodro/lerd/internal/cli"
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/dns"
+	"github.com/geodro/lerd/internal/nginx"
 	"github.com/geodro/lerd/internal/version"
 	"github.com/geodro/lerd/internal/watcher"
 	"github.com/spf13/cobra"
@@ -31,6 +33,7 @@ func main() {
 	root.AddCommand(cli.NewUnparkCmd())
 	root.AddCommand(cli.NewSitesCmd())
 	root.AddCommand(cli.NewSecureCmd())
+	root.AddCommand(cli.NewUnsecureCmd())
 	root.AddCommand(cli.NewUseCmd())
 	root.AddCommand(cli.NewIsolateCmd())
 	root.AddCommand(cli.NewIsolateNodeCmd())
@@ -38,12 +41,14 @@ func main() {
 	root.AddCommand(cli.NewPhpRebuildCmd())
 	root.AddCommand(cli.NewPhpCmd())
 	root.AddCommand(cli.NewArtisanCmd())
+	root.AddCommand(cli.NewEnvCmd())
 	root.AddCommand(cli.NewNodeCmd())
 	root.AddCommand(cli.NewNpmCmd())
 	root.AddCommand(cli.NewNpxCmd())
 	root.AddCommand(cli.NewServiceCmd())
 	root.AddCommand(cli.NewStatusCmd())
 	root.AddCommand(cli.NewLogsCmd())
+	root.AddCommand(cli.NewAutostartCmd())
 	root.AddCommand(newDNSCheckCmd())
 	root.AddCommand(newWatchCmd())
 	root.AddCommand(cli.NewServeUICmd())
@@ -94,8 +99,41 @@ func newWatchCmd() *cobra.Command {
 
 			fmt.Println("Lerd watcher started, monitoring:", cfg.ParkedDirectories)
 
+			// Initial scan: register any existing projects not yet linked
+			reloadNeeded := false
+			for _, dir := range cfg.ParkedDirectories {
+				entries, err := os.ReadDir(dir)
+				if err != nil {
+					continue
+				}
+				for _, entry := range entries {
+					if !entry.IsDir() {
+						continue
+					}
+					registered, err := cli.RegisterProject(filepath.Join(dir, entry.Name()), cfg)
+					if err != nil {
+						fmt.Printf("[WARN] %s: %v\n", entry.Name(), err)
+					} else if registered {
+						reloadNeeded = true
+					}
+				}
+			}
+			if reloadNeeded {
+				if err := nginx.Reload(); err != nil {
+					fmt.Printf("[WARN] nginx reload: %v\n", err)
+				}
+			}
+
 			return watcher.Watch(cfg.ParkedDirectories, func(projectPath string) {
 				fmt.Printf("New project detected: %s\n", projectPath)
+				registered, err := cli.RegisterProject(projectPath, cfg)
+				if err != nil {
+					fmt.Printf("[WARN] registering %s: %v\n", projectPath, err)
+				} else if registered {
+					if err := nginx.Reload(); err != nil {
+						fmt.Printf("[WARN] nginx reload: %v\n", err)
+					}
+				}
 			})
 		},
 	}

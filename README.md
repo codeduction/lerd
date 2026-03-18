@@ -155,6 +155,19 @@ That's it. Nginx is serving your project through PHP-FPM, all inside Podman cont
 
 ---
 
+## Web UI
+
+Lerd includes a browser dashboard, served at **`http://127.0.0.1:7073`** by the `lerd-ui` systemd service (started automatically with `lerd install`).
+
+The UI gives you a visual overview of your entire Lerd environment without touching the terminal:
+
+- **Sites** — lists all registered projects with their domain, PHP version, Node version, TLS status, and FPM health. From here you can toggle HTTPS on/off, change PHP version, and change Node version per site. Toggling HTTPS updates `APP_URL` in the project's `.env` automatically.
+- **Services** — shows all available services (MySQL, Redis, PostgreSQL, Meilisearch, MinIO, Mailpit, Soketi) with their current status. Start or stop any service with one click; the panel shows the correct `.env` connection values for each service.
+- **Status** — health check panel for DNS, nginx, and each PHP-FPM container.
+- **Updates** — shows the current and latest version, with a one-click update button that runs `lerd update` in the background.
+
+---
+
 ## Commands
 
 ### Setup & lifecycle
@@ -170,7 +183,6 @@ That's it. Nginx is serving your project through PHP-FPM, all inside Podman cont
 | `lerd dns:check` | Verify that `*.test` resolves to `127.0.0.1` |
 | `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, services, cert expiry |
 | `lerd logs [-f] [target]` | Show logs for the current project's FPM container, `nginx`, a service name, or a PHP version |
-| `lerd.test` | Browser dashboard — sites, services, system health, update button |
 
 ### Site management
 
@@ -182,7 +194,9 @@ That's it. Nginx is serving your project through PHP-FPM, all inside Podman cont
 | `lerd link [name] --domain foo.test` | Register with a custom domain |
 | `lerd unlink` | Remove the current directory from Lerd |
 | `lerd sites` | Table view of all registered sites |
-| `lerd secure [name]` | Issue a mkcert TLS cert and enable HTTPS for a site |
+| `lerd secure [name]` | Issue a mkcert TLS cert and enable HTTPS for a site — updates `APP_URL` in `.env` |
+| `lerd unsecure [name]` | Remove TLS and switch back to HTTP — updates `APP_URL` in `.env` |
+| `lerd env` | Configure `.env` for the current project with lerd service connection settings |
 
 > **Domain naming:** directories with real TLDs are automatically normalised — dots are replaced with dashes and the TLD is stripped before appending `.test`. For example `admin.astrolov.com` → `admin-astrolov.test`.
 
@@ -278,10 +292,49 @@ Lerd uses [mkcert](https://github.com/FiloSottile/mkcert) — a locally-trusted 
 cd ~/Lerd/my-app
 lerd secure
 # Issues a cert for my-app.test, regenerates the SSL vhost, reloads nginx
+# Updates APP_URL=https://my-app.test in .env if it exists
 # Visit https://my-app.test — no certificate warning
+
+lerd unsecure
+# Removes the cert, switches back to HTTP vhost
+# Updates APP_URL=http://my-app.test in .env if it exists
 ```
 
 Certificates are stored in `~/.local/share/lerd/certs/sites/`.
+
+---
+
+## Environment setup — `lerd env`
+
+`lerd env` sets up the `.env` file for a Laravel project in one command:
+
+```bash
+cd ~/Lerd/my-app
+lerd env
+```
+
+What it does:
+
+1. **Creates `.env`** from `.env.example` if no `.env` exists yet
+2. **Detects which services the project uses** by inspecting the existing env keys — `DB_CONNECTION`, `REDIS_HOST`, `MAIL_HOST`, `SCOUT_DRIVER`, `FILESYSTEM_DISK`, `BROADCAST_CONNECTION`, etc.
+3. **Writes lerd connection values** for each detected service (hosts, ports, credentials) — preserving all comments and line order
+4. **Starts any referenced service** that is not already running
+5. **Sets `APP_URL`** to the project's registered `.test` domain (`https://` if secured, `http://` otherwise)
+6. **Generates `APP_KEY`** via `php artisan key:generate` if the key is missing or empty
+
+Example output:
+
+```
+Creating .env from .env.example...
+  Detected mysql        — applying lerd connection values
+  Detected redis        — applying lerd connection values
+  Detected mailpit      — applying lerd connection values
+  Setting APP_URL=http://my-app.test
+  Generating APP_KEY...
+Done.
+```
+
+Running `lerd env` on a project that already has a `.env` is safe — it only updates connection-related keys and leaves everything else untouched.
 
 ---
 
@@ -312,6 +365,17 @@ services:
   mailpit:     { enabled: false, image: "axllent/mailpit:latest",       port: 1025 }
   soketi:      { enabled: false, image: "quay.io/soketi/soketi:latest-16-alpine", port: 6001 }
 ```
+
+### Start on login
+
+Lerd can be configured to start automatically when you log in:
+
+```bash
+lerd autostart enable   # start lerd automatically on every login
+lerd autostart disable  # disable autostart
+```
+
+This can also be toggled from the web UI under the **System** tab.
 
 ### Per-project config — `.lerd.yaml`
 

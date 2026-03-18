@@ -20,9 +20,11 @@ import (
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/dns"
 	"github.com/geodro/lerd/internal/nginx"
+	"github.com/geodro/lerd/internal/envfile"
 	nodePkg "github.com/geodro/lerd/internal/node"
 	phpPkg "github.com/geodro/lerd/internal/php"
 	"github.com/geodro/lerd/internal/podman"
+	lerdSystemd "github.com/geodro/lerd/internal/systemd"
 )
 
 //go:embed index.html
@@ -117,6 +119,8 @@ func Start(currentVersion string) error {
 	mux.HandleFunc("/api/node-versions/install", withCORS(handleInstallNodeVersion))
 	mux.HandleFunc("/api/sites/", withCORS(handleSiteAction))
 	mux.HandleFunc("/api/logs/", withCORS(handleLogs))
+	mux.HandleFunc("/api/settings", withCORS(handleSettings))
+	mux.HandleFunc("/api/settings/autostart", withCORS(handleSettingsAutostart))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML) //nolint:errcheck
@@ -505,12 +509,14 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		site.Secured = true
+		envfile.UpdateAppURL(site.Path, "https", site.Domain) //nolint:errcheck
 	case "unsecure":
 		if err := certs.UnsecureSite(*site); err != nil {
 			writeJSON(w, SiteActionResponse{Error: err.Error()})
 			return
 		}
 		site.Secured = false
+		envfile.UpdateAppURL(site.Path, "http", site.Domain) //nolint:errcheck
 	case "php":
 		version := r.URL.Query().Get("version")
 		if version == "" {
@@ -635,6 +641,53 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 	if cmd.Process != nil {
 		cmd.Process.Kill() //nolint:errcheck
 	}
+}
+
+// SettingsResponse is the response for GET /api/settings.
+type SettingsResponse struct {
+	AutostartOnLogin bool `json:"autostart_on_login"`
+}
+
+func handleSettings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, SettingsResponse{
+		AutostartOnLogin: lerdSystemd.IsServiceEnabled("lerd-autostart"),
+	})
+}
+
+func handleSettingsAutostart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	if body.Enabled {
+		content, err := lerdSystemd.GetUnit("lerd-autostart")
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		if err := lerdSystemd.WriteService("lerd-autostart", content); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		if err := lerdSystemd.EnableService("lerd-autostart"); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+	} else {
+		if err := lerdSystemd.DisableService("lerd-autostart"); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+	}
+	writeJSON(w, map[string]any{"ok": true, "autostart_on_login": body.Enabled})
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request, _ string) {

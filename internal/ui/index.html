@@ -494,6 +494,32 @@
             </ul>
           </div>
 
+          <!-- Autostart card -->
+          <div class="bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border p-5">
+            <div class="flex items-center gap-2.5 mb-4">
+              <div class="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              </div>
+              <h3 class="font-semibold text-gray-900 dark:text-white">Autostart</h3>
+            </div>
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-gray-500">Start on login</p>
+              <button
+                @click="toggleAutostart()"
+                :disabled="autostartLoading"
+                :title="autostartEnabled ? 'Disable autostart' : 'Enable autostart'"
+                class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50"
+                :class="autostartEnabled ? 'bg-lerd-red' : 'bg-gray-300 dark:bg-lerd-muted'"
+              >
+                <span
+                  class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200"
+                  :class="autostartEnabled ? 'translate-x-4' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">When enabled, lerd starts automatically on every login.</p>
+          </div>
+
         </div>
       </template>
     </div>
@@ -575,6 +601,8 @@ function lerdApp() {
     _sitesInterval: null,
     _sitesLoaded: false,
     nodeInstall: { version: '', installing: false, error: '', done: false },
+    autostartEnabled: false,
+    autostartLoading: false,
     logs: {
       open: false,
       container: '',
@@ -596,6 +624,7 @@ function lerdApp() {
     init() {
       this.applyTheme(this.theme);
       this.loadVersion();
+      this.loadSettings();
       this.loadSites();
       this.loadPHPVersions();
       this.loadNodeVersions();
@@ -858,6 +887,29 @@ function lerdApp() {
         this.systemStatus = await res.json();
       } catch (_) {} finally {
         this.statusLoading = false;
+      }
+    },
+
+    async loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        this.autostartEnabled = data.autostart_on_login || false;
+      } catch (_) {}
+    },
+
+    async toggleAutostart() {
+      this.autostartLoading = true;
+      try {
+        const res = await fetch('/api/settings/autostart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !this.autostartEnabled }),
+        });
+        const data = await res.json();
+        if (data.ok) this.autostartEnabled = !this.autostartEnabled;
+      } catch (_) {} finally {
+        this.autostartLoading = false;
       }
     },
   };
