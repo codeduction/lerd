@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -158,19 +158,11 @@ func certExpiry(path string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	cert, err := tls.X509KeyPair(data, data)
-	if err != nil {
-		// Try parsing as just a cert
-		parsed, err2 := x509.ParseCertificate(data)
-		if err2 != nil {
-			return time.Time{}, err
-		}
-		return parsed.NotAfter, nil
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return time.Time{}, fmt.Errorf("no PEM block found")
 	}
-	if len(cert.Certificate) == 0 {
-		return time.Time{}, fmt.Errorf("no certificate found")
-	}
-	parsed, err := x509.ParseCertificate(cert.Certificate[0])
+	parsed, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return time.Time{}, err
 	}
