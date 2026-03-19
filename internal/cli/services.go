@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -118,18 +119,31 @@ func newServiceStartCmd() *cobra.Command {
 			name := args[0]
 			unit := "lerd-" + name
 
-			var err error
+			var image string
 			if isKnownService(name) {
-				err = ensureServiceQuadlet(name)
+				if err := ensureServiceQuadlet(name); err != nil {
+					return err
+				}
+				image = podman.ServiceImage("lerd-" + name)
 			} else {
 				svc, loadErr := config.LoadCustomService(name)
 				if loadErr != nil {
 					return fmt.Errorf("unknown service %q", name)
 				}
-				err = ensureCustomServiceQuadlet(svc)
+				if err := ensureCustomServiceQuadlet(svc); err != nil {
+					return err
+				}
+				image = svc.Image
 			}
-			if err != nil {
-				return err
+
+			if image != "" && !podman.ImageExists(image) {
+				jobs := []BuildJob{{
+					Label: "Pulling " + name,
+					Run:   func(w io.Writer) error { return podman.PullImageTo(image, w) },
+				}}
+				if err := RunParallel(jobs); err != nil {
+					return fmt.Errorf("pulling image: %w", err)
+				}
 			}
 
 			fmt.Printf("Starting %s...\n", unit)

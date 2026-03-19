@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,81 +40,79 @@ func runUninstall(force bool) error {
 		}
 	}
 
-	// 1. Remove DNS configuration before stopping containers so the resolver is restored
-	// while network is still up (avoids losing connectivity mid-uninstall).
-	step("Removing DNS configuration")
-	dns.Teardown()
-	ok()
+	r := NewStepRunner()
 
-	// 2. Discover all installed units from quadlet files on disk, plus the watcher service.
 	quadletDir := config.QuadletDir()
-	var units []string
-	if entries, err := filepath.Glob(filepath.Join(quadletDir, "lerd-*.container")); err == nil {
-		for _, f := range entries {
-			// lerd-foo.container → lerd-foo
-			units = append(units, strings.TrimSuffix(filepath.Base(f), ".container"))
+
+	r.Run("Removing DNS configuration", func(_ io.Writer) error { //nolint:errcheck
+		dns.Teardown()
+		return nil
+	})
+
+	r.Run("Stopping containers and services", func(_ io.Writer) error { //nolint:errcheck
+		var units []string
+		if entries, err := filepath.Glob(filepath.Join(quadletDir, "lerd-*.container")); err == nil {
+			for _, f := range entries {
+				units = append(units, strings.TrimSuffix(filepath.Base(f), ".container"))
+			}
 		}
-	}
-	// Always include the watcher and UI services even if they have no quadlet file.
-	units = append(units, "lerd-watcher", "lerd-ui")
-
-	step("Stopping containers and services")
-	for _, unit := range units {
-		status, _ := podman.UnitStatus(unit)
-		if status == "active" {
-			_ = podman.StopUnit(unit)
+		units = append(units, "lerd-watcher", "lerd-ui")
+		for _, unit := range units {
+			status, _ := podman.UnitStatus(unit)
+			if status == "active" {
+				_ = podman.StopUnit(unit)
+			}
+			_ = disableUnit(unit)
 		}
-		// disable so systemd forgets about them after quadlet files are removed
-		_ = disableUnit(unit)
-	}
-	ok()
+		return nil
+	})
 
-	// 2. Remove Quadlet files
-	step("Removing Quadlet units")
-	if entries, err := filepath.Glob(filepath.Join(quadletDir, "lerd-*.container")); err == nil {
-		for _, f := range entries {
-			os.Remove(f) //nolint:errcheck
+	r.Run("Removing quadlet units", func(_ io.Writer) error { //nolint:errcheck
+		if entries, err := filepath.Glob(filepath.Join(quadletDir, "lerd-*.container")); err == nil {
+			for _, f := range entries {
+				os.Remove(f) //nolint:errcheck
+			}
 		}
-	}
-	ok()
+		return nil
+	})
 
-	// 3. Remove user service unit files
-	step("Removing systemd user services")
-	for _, svc := range []string{"lerd-watcher.service", "lerd-ui.service"} {
-		os.Remove(filepath.Join(config.SystemdUserDir(), svc)) //nolint:errcheck
-	}
-	ok()
+	r.Run("Removing systemd user services", func(_ io.Writer) error { //nolint:errcheck
+		for _, svc := range []string{"lerd-watcher.service", "lerd-ui.service"} {
+			os.Remove(filepath.Join(config.SystemdUserDir(), svc)) //nolint:errcheck
+		}
+		return nil
+	})
 
-	// 4. daemon-reload so systemd clears its state
-	step("Reloading systemd daemon")
-	_ = podman.DaemonReload()
-	ok()
+	r.Run("Reloading systemd daemon", func(_ io.Writer) error { //nolint:errcheck
+		_ = podman.DaemonReload()
+		return nil
+	})
 
-	// 5. Remove Podman network (best-effort)
-	step("Removing lerd Podman network")
-	_ = podman.RunSilent("network", "rm", "lerd")
-	ok()
+	r.Run("Removing lerd Podman network", func(_ io.Writer) error { //nolint:errcheck
+		_ = podman.RunSilent("network", "rm", "lerd")
+		return nil
+	})
 
-	// 6. Remove shell PATH entry
-	step("Removing shell PATH entry")
-	removeShellEntry()
-	ok()
+	r.Run("Removing shell PATH entry", func(_ io.Writer) error { //nolint:errcheck
+		removeShellEntry()
+		return nil
+	})
 
-	// 7. Remove binary
-	step("Removing lerd binary")
-	self, err := selfPath()
-	if err == nil {
-		os.Remove(self)
-	}
-	ok()
+	r.Run("Removing lerd binary", func(_ io.Writer) error { //nolint:errcheck
+		if self, err := selfPath(); err == nil {
+			os.Remove(self) //nolint:errcheck
+		}
+		return nil
+	})
 
-	// 8. Optionally remove data and config
+	r.Close()
+
 	fmt.Println()
 	if force || confirmRemoveData() {
-		step("Removing config and data directories")
+		fmt.Print("  --> Removing config and data directories ... ")
 		os.RemoveAll(config.ConfigDir())
 		os.RemoveAll(config.DataDir())
-		ok()
+		fmt.Println("OK")
 	} else {
 		fmt.Printf("  Config kept at %s\n", config.ConfigDir())
 		fmt.Printf("  Data kept at   %s\n", config.DataDir())

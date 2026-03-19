@@ -42,8 +42,6 @@ RUN apk update && apk add --no-cache \
         dba \
         ldap \
         mysqli \
-        pdo_sqlite \
-        sqlite3 \
         soap \
         shmop \
         sysvmsg \

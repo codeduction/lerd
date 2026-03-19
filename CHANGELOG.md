@@ -7,6 +7,26 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.6] — 2026-03-19
+
+### Added
+
+- **Parallel build TUI** — `lerd fetch` and `lerd php:rebuild` now build PHP-FPM images in parallel with a compact spinner UI; press Ctrl+O to toggle per-job output
+- **Service image pull TUI** — `lerd service start` shows a spinner while pulling the container image if it is not already present
+- **Condensed uninstall output** — `lerd uninstall` uses the same spinner UI for a cleaner experience
+
+### Changed
+
+- **Install output** — `lerd install` uses plain sequential output with a spinner only for the slow image pull and dnsmasq build steps; interactive sudo prompts (mkcert CA, DNS sudoers) are no longer affected by raw terminal mode
+- **mkcert output indented** — output from `mkcert -install` is indented to align with the surrounding install step lines
+- **Spinner timer hidden when zero** — the elapsed timer is omitted from spinner rows that complete in under one second
+
+### Fixed
+
+- **PHP Containerfile** — removed `pdo_sqlite` and `sqlite3` from `docker-php-ext-install`; both are bundled in the PHP Alpine base image and including them caused a `Cannot find config.m4` build error
+
+---
+
 ## [0.5.5] — 2026-03-19
 
 ### Added

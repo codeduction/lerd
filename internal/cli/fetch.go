@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/geodro/lerd/internal/podman"
 	"github.com/spf13/cobra"
@@ -26,13 +27,18 @@ func runFetch(_ *cobra.Command, args []string) error {
 		versions = SupportedPHPVersions
 	}
 
-	for _, v := range versions {
-		fmt.Printf("==> Fetching PHP %s FPM image\n", v)
-		if err := podman.BuildFPMImage(v); err != nil {
-			fmt.Printf("  [WARN] PHP %s: %v\n", v, err)
+	jobs := make([]BuildJob, len(versions))
+	for i, v := range versions {
+		ver := v
+		jobs[i] = BuildJob{
+			Label: "PHP " + ver,
+			Run:   func(w io.Writer) error { return podman.BuildFPMImageTo(ver, w) },
 		}
 	}
 
+	if err := RunParallel(jobs); err != nil {
+		fmt.Printf("[WARN] some images failed to build: %v\n", err)
+	}
 	fmt.Println("\nAll requested PHP images ready.")
 	return nil
 }

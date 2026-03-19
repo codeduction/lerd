@@ -3,6 +3,7 @@ package podman
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -24,6 +25,37 @@ func Run(args ...string) (string, error) {
 func RunSilent(args ...string) error {
 	_, err := Run(args...)
 	return err
+}
+
+// ImageExists returns true if the named image is present in the local store.
+func ImageExists(image string) bool {
+	return RunSilent("image", "exists", image) == nil
+}
+
+// PullImageTo pulls the named image, writing progress output to w.
+func PullImageTo(image string, w io.Writer) error {
+	cmd := exec.Command("podman", "pull", image)
+	cmd.Stdout = w
+	cmd.Stderr = w
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pulling %s: %w", image, err)
+	}
+	return nil
+}
+
+// ServiceImage returns the OCI image name embedded in a named quadlet template.
+// Returns "" if the quadlet or Image line is not found.
+func ServiceImage(quadletName string) string {
+	content, err := GetQuadletTemplate(quadletName + ".container")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "Image=") {
+			return strings.TrimPrefix(line, "Image=")
+		}
+	}
+	return ""
 }
 
 // ContainerRunning returns true if the named container is running.

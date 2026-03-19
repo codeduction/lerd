@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"strings"
 
 	phpPkg "github.com/geodro/lerd/internal/php"
 	"github.com/geodro/lerd/internal/podman"
@@ -29,13 +31,15 @@ func runPhpRebuild(_ *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	for _, v := range versions {
-		fmt.Printf("==> Rebuilding PHP %s FPM image\n", v)
-		if err := podman.RebuildFPMImage(v); err != nil {
-			fmt.Printf("  [WARN] PHP %s: %v\n", v, err)
-			continue
+	jobs := make([]BuildJob, len(versions))
+	for i, v := range versions {
+		ver := v
+		jobs[i] = BuildJob{
+			Label: "PHP " + ver,
+			Run:   func(w io.Writer) error { return podman.RebuildFPMImageTo(ver, w) },
 		}
 	}
+	RunParallel(jobs) //nolint:errcheck — individual failures printed by RunParallel
 
 	// Store the new Containerfile hash so future updates know images are current.
 	if err := podman.StoreFPMHash(); err != nil {
@@ -45,13 +49,7 @@ func runPhpRebuild(_ *cobra.Command, _ []string) error {
 	fmt.Println("\nAll PHP-FPM images rebuilt.")
 	fmt.Println("Restart FPM containers to use the new images:")
 	for _, v := range versions {
-		short := ""
-		for _, c := range v {
-			if c != '.' {
-				short += string(c)
-			}
-		}
-		fmt.Printf("  systemctl --user restart lerd-php%s-fpm\n", short)
+		fmt.Printf("  systemctl --user restart lerd-php%s-fpm\n", strings.ReplaceAll(v, ".", ""))
 	}
 
 	return nil

@@ -58,13 +58,13 @@ func runUpdate(currentVersion string) error {
 		return err
 	}
 
-	step("Downloading lerd v" + lat)
+	fmt.Printf("  --> Downloading lerd v%s ... ", lat)
 	binary, cleanup, err := downloadReleaseBinary(latest)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	ok()
+	fmt.Println("OK")
 
 	// Write to a temp file beside the binary then rename (atomic on same filesystem).
 	tmp := self + ".tmp"
@@ -150,7 +150,7 @@ func downloadReleaseBinary(version string) (string, func(), error) {
 	cleanup := func() { os.RemoveAll(tmp) }
 
 	archive := filepath.Join(tmp, filename)
-	if err := downloadFile(url, archive, 0644); err != nil {
+	if err := downloadFile(url, archive, 0644, io.Discard); err != nil {
 		cleanup()
 		return "", func() {}, fmt.Errorf("download failed (%s): %w", url, err)
 	}

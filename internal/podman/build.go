@@ -3,6 +3,7 @@ package podman
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,13 +48,21 @@ func StoreFPMHash() error {
 }
 
 // BuildFPMImage builds the lerd PHP-FPM image for the given version if it doesn't exist.
-// Prints build output to stdout so the user can see progress.
 func BuildFPMImage(version string) error {
 	cfg, err := config.LoadGlobal()
 	if err != nil {
 		return err
 	}
-	return buildFPMImage(version, false, cfg.GetExtensions(version))
+	return buildFPMImage(version, false, cfg.GetExtensions(version), os.Stdout)
+}
+
+// BuildFPMImageTo builds the PHP-FPM image writing output to w.
+func BuildFPMImageTo(version string, w io.Writer) error {
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return err
+	}
+	return buildFPMImage(version, false, cfg.GetExtensions(version), w)
 }
 
 // RebuildFPMImage force-removes and rebuilds the PHP-FPM image for the given version.
@@ -62,10 +71,19 @@ func RebuildFPMImage(version string) error {
 	if err != nil {
 		return err
 	}
-	return buildFPMImage(version, true, cfg.GetExtensions(version))
+	return buildFPMImage(version, true, cfg.GetExtensions(version), os.Stdout)
 }
 
-func buildFPMImage(version string, force bool, customExts []string) error {
+// RebuildFPMImageTo force-rebuilds the PHP-FPM image writing output to w.
+func RebuildFPMImageTo(version string, w io.Writer) error {
+	cfg, err := config.LoadGlobal()
+	if err != nil {
+		return err
+	}
+	return buildFPMImage(version, true, cfg.GetExtensions(version), w)
+}
+
+func buildFPMImage(version string, force bool, customExts []string, w io.Writer) error {
 	short := strings.ReplaceAll(version, ".", "")
 	imageName := "lerd-php" + short + "-fpm:local"
 
@@ -81,7 +99,7 @@ func buildFPMImage(version string, force bool, customExts []string) error {
 		_ = rmCmd.Run() // ignore error if image didn't exist
 	}
 
-	fmt.Printf("\n  Building PHP %s image (may take a few minutes)...\n", version)
+	fmt.Fprintf(w, "\n  Building PHP %s image (may take a few minutes)...\n", version)
 
 	containerfileTmpl, err := GetQuadletTemplate("lerd-php-fpm.Containerfile")
 	if err != nil {
@@ -102,13 +120,13 @@ func buildFPMImage(version string, force bool, customExts []string) error {
 	}
 
 	cmd := exec.Command("podman", "build", "-t", imageName, "-f", cfPath, tmp)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = w
+	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("building PHP %s image: %w", version, err)
 	}
 
-	fmt.Printf("  PHP %s image built successfully.\n", version)
+	fmt.Fprintf(w, "  PHP %s image built successfully.\n", version)
 	return nil
 }
 
