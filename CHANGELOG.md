@@ -7,6 +7,14 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.8] — 2026-03-20
+
+### Fixed
+
+- **GoReleaser archive** — split amd64 and arm64 into separate archive definitions so `lerd-tray` (amd64-only) doesn't cause a binary count mismatch error
+
+---
+
 ## [0.5.7] — 2026-03-20
 
 ### Fixed
