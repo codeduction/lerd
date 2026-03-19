@@ -7,17 +7,35 @@ before:
     - go mod tidy
 
 builds:
-  - id: lerd
+  - id: lerd-amd64
     main: ./cmd/lerd
     binary: lerd
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     flags:
-      - -tags=nogui
+      - -tags=legacy_appindicator
     goos:
       - linux
     goarch:
       - amd64
+    ldflags:
+      - -s -w
+      - -X github.com/geodro/lerd/internal/version.Version={{.Version}}
+      - -X github.com/geodro/lerd/internal/version.Commit={{.Commit}}
+      - -X github.com/geodro/lerd/internal/version.Date={{.Date}}
+
+  - id: lerd-arm64
+    main: ./cmd/lerd
+    binary: lerd
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+      - PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+    flags:
+      - -tags=legacy_appindicator
+    goos:
+      - linux
+    goarch:
       - arm64
     ldflags:
       - -s -w
@@ -27,7 +45,7 @@ builds:
 
 archives:
   - id: lerd
-    builds: [lerd]
+    builds: [lerd-amd64, lerd-arm64]
     name_template: "lerd_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: tar.gz
     files:

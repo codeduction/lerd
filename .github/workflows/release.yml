@@ -21,6 +21,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install tray build dependencies
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing \
+            libappindicator3-dev \
+            gcc-aarch64-linux-gnu \
+            libappindicator3-dev:arm64
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

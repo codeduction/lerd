@@ -19,7 +19,9 @@ jobs:
           cache: true
 
       - name: Install tray build dependencies
-        run: sudo apt-get install -y libappindicator3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing libappindicator3-dev
 
       - name: Download dependencies
         run: go mod download
