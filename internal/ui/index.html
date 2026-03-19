@@ -187,11 +187,9 @@
                   <td class="px-5 py-3.5">
                     <a
                       :href="(site.tls ? 'https://' : 'http://') + site.domain"
-                      target="_blank"
-                      rel="noopener"
+                      @click.prevent.stop="openSite(site)"
                       class="text-lerd-red hover:text-lerd-redhov font-medium transition-colors"
                       x-text="site.domain"
-                      @click.stop
                     ></a>
                   </td>
                   <td class="px-5 py-3.5 text-gray-500 font-mono text-xs truncate max-w-xs" x-text="site.path"></td>
@@ -895,6 +893,14 @@ function lerdApp() {
       } finally {
         site.versionLoading = false;
       }
+    },
+
+    openSite(site) {
+      const protocol = site.tls ? 'https' : 'http';
+      // Append a cache-buster for HTTP sites so the browser doesn't serve a
+      // previously cached 301 redirect to the HTTPS version.
+      const bust = site.tls ? '' : `?_=${Date.now()}`;
+      window.open(`${protocol}://${site.domain}${bust}`, '_blank', 'noopener');
     },
 
     async toggleTLS(site) {

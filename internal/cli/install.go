@@ -247,6 +247,13 @@ func runInstall(_ *cobra.Command, _ []string) error {
 		ok()
 	}
 
+	step("Restarting watcher service")
+	if err := podman.RestartUnit("lerd-watcher"); err != nil {
+		fmt.Printf(" [WARN: %v]\n", err)
+	} else {
+		ok()
+	}
+
 	// UI service
 	step("Writing UI service")
 	uiContent, err := lerdSystemd.GetUnit("lerd-ui")

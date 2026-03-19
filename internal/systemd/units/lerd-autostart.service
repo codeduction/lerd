@@ -1,6 +1,6 @@
 [Unit]
 Description=Lerd Auto-start on Login
-After=default.target network-online.target
+After=default.target network-online.target lerd-dns.service
 
 [Service]
 Type=oneshot

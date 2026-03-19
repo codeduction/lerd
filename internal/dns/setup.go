@@ -2,10 +2,12 @@ package dns
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/geodro/lerd/internal/config"
 )
@@ -23,10 +25,10 @@ Domains=~test
 `
 
 // nmDispatcherScript is installed at /etc/NetworkManager/dispatcher.d/99-lerd-dns.
-// On Ubuntu, NetworkManager manages systemd-resolved via DBUS and overrides global
-// resolved.conf drop-ins. Per-interface DNS set via resolvectl is respected.
-// We route only .test through lerd's dnsmasq so that internet DNS never depends on
-// lerd being running — lerd is a user-level service that starts after login.
+// On systems with NetworkManager + systemd-resolved, NM manages resolved via DBus and
+// overrides global resolved.conf drop-ins. Per-interface DNS set via resolvectl is
+// respected. We set two routing domains: ~test routes .test queries to lerd's dnsmasq,
+// and ~. keeps the interface as the default route so all other DNS (internet) still works.
 // The DHCP-assigned DNS servers are preserved alongside lerd's so internet continues
 // to work even when lerd-dns is not yet running.
 const nmDispatcherScript = `#!/bin/sh
@@ -36,7 +38,7 @@ ACTION="$2"
 if [ "$ACTION" = "up" ] || [ "$ACTION" = "dhcp4-change" ] || [ "$ACTION" = "dhcp6-change" ]; then
     DHCP_DNS=$(nmcli -g IP4.DNS device show "$IFACE" 2>/dev/null | tr '|' '\n' | grep -v '^$' | tr '\n' ' ')
     resolvectl dns "$IFACE" 127.0.0.1:5300 $DHCP_DNS 2>/dev/null || true
-    resolvectl domain "$IFACE" ~test 2>/dev/null || true
+    resolvectl domain "$IFACE" ~test ~. 2>/dev/null || true
 fi
 `
 
@@ -165,6 +167,22 @@ func parseNameservers(path string) []string {
 	return servers
 }
 
+// WaitReady blocks until lerd-dns is accepting TCP connections on port 5300
+// (dnsmasq supports DNS over TCP), or until the timeout elapses.
+// Returns nil when ready, error on timeout.
+func WaitReady(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:5300", 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("lerd-dns not ready after %s", timeout)
+}
+
 // Setup writes DNS configuration for .test resolution and restarts the resolver.
 // On systemd-resolved + NetworkManager systems (Ubuntu etc.) it uses an NM dispatcher script.
 // On pure systemd-resolved systems it uses a resolved drop-in.
@@ -254,7 +272,7 @@ func setupNMWithResolved() error {
 		return fmt.Errorf("applying DNS to %s: %w", iface, err)
 	}
 
-	domainCmd := exec.Command("sudo", "resolvectl", "domain", iface, "~test")
+	domainCmd := exec.Command("sudo", "resolvectl", "domain", iface, "~test", "~.")
 	domainCmd.Stdin = os.Stdin
 	domainCmd.Stdout = os.Stdout
 	domainCmd.Stderr = os.Stderr

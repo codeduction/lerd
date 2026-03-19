@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/geodro/lerd/internal/dns"
 	phpPkg "github.com/geodro/lerd/internal/php"
@@ -95,6 +96,15 @@ func runStart(_ *cobra.Command, _ []string) error {
 		} else {
 			fmt.Println("OK")
 		}
+	}
+
+	// Wait for lerd-dns to be ready before configuring the resolver.
+	// systemctl start returns when the unit is active, but dnsmasq inside the
+	// container may not be listening yet. If we set resolvectl to use port 5300
+	// before it's up, systemd-resolved marks it failed and falls back to the
+	// upstream DNS server, breaking .test resolution until manually fixed.
+	if err := dns.WaitReady(10 * time.Second); err != nil {
+		fmt.Printf("  WARN: %v\n", err)
 	}
 
 	// Re-apply DNS routing so .test resolves via lerd-dns on every start.
