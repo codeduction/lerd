@@ -8,6 +8,7 @@ import (
 	"github.com/geodro/lerd/internal/certs"
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/envfile"
+	"github.com/geodro/lerd/internal/nginx"
 	"github.com/spf13/cobra"
 )
 
@@ -71,6 +72,9 @@ func runSecure(_ *cobra.Command, args []string) error {
 
 	updateEnvAppURL(site.Path, "https", site.Domain)
 
+	if err := nginx.Reload(); err != nil {
+		fmt.Printf("[WARN] nginx reload: %v\n", err)
+	}
 	fmt.Printf("Secured: https://%s\n", site.Domain)
 	return nil
 }
@@ -99,6 +103,9 @@ func runUnsecure(_ *cobra.Command, args []string) error {
 
 	updateEnvAppURL(site.Path, "http", site.Domain)
 
+	if err := nginx.Reload(); err != nil {
+		fmt.Printf("[WARN] nginx reload: %v\n", err)
+	}
 	fmt.Printf("Unsecured: http://%s\n", site.Domain)
 	return nil
 }

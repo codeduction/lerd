@@ -21,6 +21,7 @@ import (
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/dns"
 	"github.com/geodro/lerd/internal/envfile"
+	gitpkg "github.com/geodro/lerd/internal/git"
 	"github.com/geodro/lerd/internal/nginx"
 	nodePkg "github.com/geodro/lerd/internal/node"
 	phpPkg "github.com/geodro/lerd/internal/php"
@@ -208,16 +209,24 @@ func handleStatus(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// WorktreeResponse is embedded in SiteResponse for each git worktree.
+type WorktreeResponse struct {
+	Branch string `json:"branch"`
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
+
 // SiteResponse is the response for GET /api/sites.
 type SiteResponse struct {
-	Name         string `json:"name"`
-	Domain       string `json:"domain"`
-	Path         string `json:"path"`
-	PHPVersion   string `json:"php_version"`
-	NodeVersion  string `json:"node_version"`
-	TLS          bool   `json:"tls"`
-	FPMRunning   bool   `json:"fpm_running"`
-	QueueRunning bool   `json:"queue_running"`
+	Name         string             `json:"name"`
+	Domain       string             `json:"domain"`
+	Path         string             `json:"path"`
+	PHPVersion   string             `json:"php_version"`
+	NodeVersion  string             `json:"node_version"`
+	TLS          bool               `json:"tls"`
+	FPMRunning   bool               `json:"fpm_running"`
+	QueueRunning bool               `json:"queue_running"`
+	Worktrees    []WorktreeResponse `json:"worktrees"`
 }
 
 func handleSites(w http.ResponseWriter, _ *http.Request) {
@@ -261,6 +270,18 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 			fpmRunning, _ = podman.ContainerRunning("lerd-php" + short + "-fpm")
 		}
 		queueStatus, _ := podman.UnitStatus("lerd-queue-" + s.Name)
+
+		worktreeResponses := []WorktreeResponse{}
+		if wts, err := gitpkg.DetectWorktrees(s.Path, s.Domain); err == nil {
+			for _, wt := range wts {
+				worktreeResponses = append(worktreeResponses, WorktreeResponse{
+					Branch: wt.Branch,
+					Domain: wt.Domain,
+					Path:   wt.Path,
+				})
+			}
+		}
+
 		sites = append(sites, SiteResponse{
 			Name:         s.Name,
 			Domain:       s.Domain,
@@ -270,6 +291,7 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 			TLS:          s.Secured,
 			FPMRunning:   fpmRunning,
 			QueueRunning: queueStatus == "active",
+			Worktrees:    worktreeResponses,
 		})
 	}
 	if sites == nil {
@@ -689,6 +711,7 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	needsReload := false
 	switch action {
 	case "secure":
 		if err := certs.SecureSite(*site); err != nil {
@@ -697,6 +720,7 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 		}
 		site.Secured = true
 		envfile.UpdateAppURL(site.Path, "https", site.Domain) //nolint:errcheck
+		needsReload = true
 	case "unsecure":
 		if err := certs.UnsecureSite(*site); err != nil {
 			writeJSON(w, SiteActionResponse{Error: err.Error()})
@@ -704,6 +728,7 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 		}
 		site.Secured = false
 		envfile.UpdateAppURL(site.Path, "http", site.Domain) //nolint:errcheck
+		needsReload = true
 	case "php":
 		version := r.URL.Query().Get("version")
 		if version == "" {
@@ -727,11 +752,8 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, SiteActionResponse{Error: "regenerating vhost: " + err.Error()})
 				return
 			}
-			if err := nginx.Reload(); err != nil {
-				writeJSON(w, SiteActionResponse{Error: "reloading nginx: " + err.Error()})
-				return
-			}
 		}
+		needsReload = true
 	case "node":
 		version := r.URL.Query().Get("version")
 		if version == "" {
@@ -776,6 +798,12 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 	if err := config.AddSite(*site); err != nil {
 		writeJSON(w, SiteActionResponse{Error: "updating site registry: " + err.Error()})
 		return
+	}
+	if needsReload {
+		if err := nginx.Reload(); err != nil {
+			writeJSON(w, SiteActionResponse{Error: "reloading nginx: " + err.Error()})
+			return
+		}
 	}
 	writeJSON(w, SiteActionResponse{OK: true})
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // Watch monitors the given directories for new and deleted project subdirectories.
-// onNew is called when an artisan file appears in a subdirectory.
+// onNew is called when an artisan file appears in a direct subdirectory of a parked dir.
 // onRemoved is called when a watched subdirectory is deleted.
 func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) error {
 	w, err := fsnotify.NewWatcher()
@@ -16,6 +16,10 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 		return err
 	}
 	defer w.Close()
+
+	// parkedDirs tracks the top-level parked directories so we only register
+	// projects that are direct children of them, not deeper nestings.
+	parkedDirs := map[string]bool{}
 
 	for _, dir := range dirs {
 		expanded := expandHome(dir)
@@ -25,7 +29,8 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 		if err := w.Add(expanded); err != nil {
 			continue
 		}
-		// Also watch existing subdirectories so we catch artisan creation inside them.
+		parkedDirs[expanded] = true
+		// Also watch existing direct subdirectories so we catch artisan creation inside them.
 		entries, _ := os.ReadDir(expanded)
 		for _, e := range entries {
 			if e.IsDir() {
@@ -45,11 +50,17 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 				onRemoved(event.Name)
 			case event.Op&(fsnotify.Create|fsnotify.Write) != 0:
 				if filepath.Base(event.Name) == "artisan" {
-					onNew(filepath.Dir(event.Name))
+					projectDir := filepath.Dir(event.Name)
+					// Only register if this is a direct child of a parked dir.
+					if parkedDirs[filepath.Dir(projectDir)] {
+						onNew(projectDir)
+					}
 				} else if event.Op&fsnotify.Create != 0 {
-					// New subdirectory in a parked dir — watch it for artisan.
-					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-						_ = w.Add(event.Name)
+					// New direct subdirectory in a parked dir — watch it for artisan.
+					if parkedDirs[filepath.Dir(event.Name)] {
+						if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+							_ = w.Add(event.Name)
+						}
 					}
 				}
 			}

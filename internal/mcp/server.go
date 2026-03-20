@@ -1243,6 +1243,10 @@ func execSecure(args map[string]any) (any, *rpcError) {
 		_ = err
 	}
 
+	if err := nginx.Reload(); err != nil {
+		return toolErr("reloading nginx: " + err.Error()), nil
+	}
+
 	return toolOK(fmt.Sprintf("Secured: https://%s", site.Domain)), nil
 }
 
@@ -1270,6 +1274,10 @@ func execUnsecure(args map[string]any) (any, *rpcError) {
 		"APP_URL": "http://" + site.Domain,
 	}); err != nil {
 		_ = err
+	}
+
+	if err := nginx.Reload(); err != nil {
+		return toolErr("reloading nginx: " + err.Error()), nil
 	}
 
 	return toolOK(fmt.Sprintf("Unsecured: http://%s", site.Domain)), nil

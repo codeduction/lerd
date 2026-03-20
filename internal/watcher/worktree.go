@@ -1,0 +1,195 @@
+package watcher
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// WatchWorktrees monitors the .git/worktrees/ directory for each site returned
+// by getSites and calls onAdded/onRemoved when entries appear or disappear.
+// It also watches .git/ itself so it can re-attach to .git/worktrees/ if it is
+// deleted (last worktree removed) and then re-created (first new worktree added).
+// It re-polls getSites every 30 seconds to pick up newly registered sites.
+func WatchWorktrees(
+	getSites func() []string,
+	onAdded func(sitePath, name string),
+	onRemoved func(sitePath, name string),
+) error {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
+	// siteForGitDir maps <site>/.git/ → site path (always watched)
+	siteForGitDir := map[string]string{}
+	// siteForWorktreesDir maps <site>/.git/worktrees/ → site path
+	siteForWorktreesDir := map[string]string{}
+	// siteForEntryDir maps <site>/.git/worktrees/<name>/ → site path
+	siteForEntryDir := map[string]string{}
+
+	addWorktreesWatch := func(sitePath string) {
+		worktreesDir := filepath.Join(sitePath, ".git", "worktrees")
+		if _, already := siteForWorktreesDir[worktreesDir]; already {
+			return
+		}
+		if _, err := os.Stat(worktreesDir); err != nil {
+			return
+		}
+		if err := w.Add(worktreesDir); err == nil {
+			siteForWorktreesDir[worktreesDir] = sitePath
+		}
+	}
+
+	addSite := func(sitePath string) {
+		gitDir := filepath.Join(sitePath, ".git")
+		if _, already := siteForGitDir[gitDir]; already {
+			return
+		}
+		if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
+			return
+		}
+		if err := w.Add(gitDir); err == nil {
+			siteForGitDir[gitDir] = sitePath
+		}
+		addWorktreesWatch(sitePath)
+	}
+
+	for _, sitePath := range getSites() {
+		addSite(sitePath)
+	}
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			for _, sitePath := range getSites() {
+				addSite(sitePath)
+			}
+
+		case event, ok := <-w.Events:
+			if !ok {
+				return nil
+			}
+			dir := filepath.Dir(event.Name)
+
+			// Event inside .git/ — watch for worktrees/ being (re-)created.
+			if sitePath, known := siteForGitDir[dir]; known {
+				if filepath.Base(event.Name) == "worktrees" && event.Op&fsnotify.Create != 0 {
+					addWorktreesWatch(sitePath)
+					// Git may have already written entries by the time we receive
+					// this event (race: worktrees/ created and populated before our
+					// watch fires). Scan immediately.
+					worktreesDir := event.Name
+					entries, _ := os.ReadDir(worktreesDir)
+					for _, e := range entries {
+						if !e.IsDir() {
+							continue
+						}
+						entryDir := filepath.Join(worktreesDir, e.Name())
+						name := e.Name()
+						if _, already := siteForEntryDir[entryDir]; !already {
+							if err := w.Add(entryDir); err == nil {
+								siteForEntryDir[entryDir] = sitePath
+							}
+						}
+						go handleNewEntry(entryDir, sitePath, name, onAdded)
+					}
+				}
+				continue
+			}
+
+			// Event inside .git/worktrees/ — new entry dir created or removed.
+			if sitePath, known := siteForWorktreesDir[dir]; known {
+				name := filepath.Base(event.Name)
+				switch {
+				case event.Op&fsnotify.Create != 0:
+					entryDir := event.Name
+					info, err := os.Stat(entryDir)
+					if err != nil || !info.IsDir() {
+						continue
+					}
+					// Watch the entry dir for the case gitdir isn't written yet.
+					if _, already := siteForEntryDir[entryDir]; !already {
+						if err := w.Add(entryDir); err == nil {
+							siteForEntryDir[entryDir] = sitePath
+						}
+					}
+					// Also immediately try: git may have already finished writing
+					// by the time we receive the Create event.
+					go handleNewEntry(entryDir, sitePath, name, onAdded)
+
+				case event.Op&fsnotify.Remove != 0:
+					onRemoved(sitePath, name)
+					// If the worktrees dir itself was deleted (fsnotify fires a
+					// Remove for the watched dir), remove it from our map so we
+					// can re-watch it when git re-creates it.
+					delete(siteForWorktreesDir, event.Name)
+				}
+				continue
+			}
+
+			// Event inside .git/worktrees/<name>/ — gitdir written after we
+			// already set up the watch (slow git or large checkout).
+			if sitePath, known := siteForEntryDir[dir]; known {
+				if filepath.Base(event.Name) == "gitdir" && event.Op&(fsnotify.Create|fsnotify.Write) != 0 {
+					name := filepath.Base(dir)
+					go handleNewEntry(dir, sitePath, name, onAdded)
+				}
+				continue
+			}
+
+		case _, ok := <-w.Errors:
+			if !ok {
+				return nil
+			}
+		}
+	}
+}
+
+// handleNewEntry waits for the gitdir file to appear in entryDir, reads the
+// checkout path from it, then polls until the checkout directory exists before
+// calling onAdded. Safe to call multiple times — onAdded is idempotent.
+func handleNewEntry(entryDir, sitePath, name string, onAdded func(string, string)) {
+	// Wait up to 5s for gitdir to be written.
+	gitdirPath := filepath.Join(entryDir, "gitdir")
+	var checkoutPath string
+	for i := 0; i < 10; i++ {
+		cp := checkoutPathFromGitdir(gitdirPath)
+		if cp != "" {
+			checkoutPath = cp
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if checkoutPath == "" {
+		return
+	}
+	// Wait up to 10s for the checkout directory to be fully created.
+	for i := 0; i < 20; i++ {
+		if _, err := os.Stat(checkoutPath); err == nil {
+			onAdded(sitePath, name)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// checkoutPathFromGitdir reads the gitdir file and returns the checkout path.
+func checkoutPathFromGitdir(gitdirPath string) string {
+	data, err := os.ReadFile(gitdirPath)
+	if err != nil {
+		return ""
+	}
+	gitFile := strings.TrimSpace(string(data))
+	if !filepath.IsAbs(gitFile) {
+		gitFile = filepath.Join(filepath.Dir(gitdirPath), gitFile)
+	}
+	return filepath.Dir(filepath.Clean(gitFile))
+}

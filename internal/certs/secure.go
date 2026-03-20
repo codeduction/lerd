@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/geodro/lerd/internal/config"
+	"github.com/geodro/lerd/internal/envfile"
+	gitpkg "github.com/geodro/lerd/internal/git"
 	"github.com/geodro/lerd/internal/nginx"
 )
 
@@ -29,7 +31,15 @@ func SecureSite(site config.Site) error {
 		return fmt.Errorf("renaming SSL config: %w", err)
 	}
 
-	return nginx.Reload()
+	// Regenerate SSL vhosts and update APP_URL for any worktrees.
+	if worktrees, err := gitpkg.DetectWorktrees(site.Path, site.Domain); err == nil {
+		for _, wt := range worktrees {
+			_ = nginx.GenerateWorktreeSSLVhost(wt.Domain, wt.Path, site.PHPVersion, site.Domain)
+			envfile.UpdateAppURL(wt.Path, "https", wt.Domain) //nolint:errcheck
+		}
+	}
+
+	return nil
 }
 
 // UnsecureSite regenerates a plain HTTP vhost for the site, removing TLS.
@@ -43,10 +53,18 @@ func UnsecureSite(site config.Site) error {
 		return fmt.Errorf("generating HTTP vhost: %w", err)
 	}
 
+	// Switch any worktree SSL vhosts back to plain HTTP and update APP_URL.
+	if worktrees, err := gitpkg.DetectWorktrees(site.Path, site.Domain); err == nil {
+		for _, wt := range worktrees {
+			_ = nginx.GenerateWorktreeVhost(wt.Domain, wt.Path, site.PHPVersion)
+			envfile.UpdateAppURL(wt.Path, "http", wt.Domain) //nolint:errcheck
+		}
+	}
+
 	// Remove cert files
 	certsDir := filepath.Join(config.CertsDir(), "sites")
 	os.Remove(filepath.Join(certsDir, site.Domain+".crt")) //nolint:errcheck
 	os.Remove(filepath.Join(certsDir, site.Domain+".key")) //nolint:errcheck
 
-	return nginx.Reload()
+	return nil
 }

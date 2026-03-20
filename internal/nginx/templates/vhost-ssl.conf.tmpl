@@ -10,8 +10,8 @@ server {
     root {{.Path}}/public;
     index index.php index.html;
 
-    ssl_certificate /etc/nginx/certs/{{.Domain}}.crt;
-    ssl_certificate_key /etc/nginx/certs/{{.Domain}}.key;
+    ssl_certificate /etc/nginx/certs/{{.CertDomain}}.crt;
+    ssl_certificate_key /etc/nginx/certs/{{.CertDomain}}.key;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;

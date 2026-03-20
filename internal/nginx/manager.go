@@ -18,10 +18,11 @@ type nginxConfData struct {
 
 // VhostData is the data passed to vhost templates.
 type VhostData struct {
-	Domain         string
-	Path           string
-	PHPVersion     string
+	Domain          string
+	Path            string
+	PHPVersion      string
 	PHPVersionShort string
+	CertDomain      string // domain whose cert files to use (defaults to Domain)
 }
 
 // phpShort converts "8.4" → "84".
@@ -77,6 +78,7 @@ func GenerateSSLVhost(site config.Site, phpVersion string) error {
 		Path:            site.Path,
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
+		CertDomain:      site.Domain,
 	}
 
 	var buf bytes.Buffer
@@ -88,6 +90,71 @@ func GenerateSSLVhost(site config.Site, phpVersion string) error {
 		return err
 	}
 	confPath := filepath.Join(config.NginxConfD(), site.Domain+"-ssl.conf")
+	return os.WriteFile(confPath, buf.Bytes(), 0644)
+}
+
+// GenerateWorktreeVhost renders the HTTP vhost template for a worktree checkout
+// and writes it to conf.d/<domain>.conf.
+func GenerateWorktreeVhost(domain, path, phpVersion string) error {
+	tmplData, err := GetTemplate("vhost.conf.tmpl")
+	if err != nil {
+		return err
+	}
+
+	tmpl, err := template.New("vhost").Parse(string(tmplData))
+	if err != nil {
+		return err
+	}
+
+	data := VhostData{
+		Domain:          domain,
+		Path:            path,
+		PHPVersion:      phpVersion,
+		PHPVersionShort: phpShort(phpVersion),
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(config.NginxConfD(), 0755); err != nil {
+		return err
+	}
+	confPath := filepath.Join(config.NginxConfD(), domain+".conf")
+	return os.WriteFile(confPath, buf.Bytes(), 0644)
+}
+
+// GenerateWorktreeSSLVhost renders the SSL vhost template for a worktree checkout,
+// reusing the parent site's wildcard certificate (*.parentDomain).
+func GenerateWorktreeSSLVhost(domain, path, phpVersion, parentDomain string) error {
+	tmplData, err := GetTemplate("vhost-ssl.conf.tmpl")
+	if err != nil {
+		return err
+	}
+
+	tmpl, err := template.New("vhost-ssl").Parse(string(tmplData))
+	if err != nil {
+		return err
+	}
+
+	data := VhostData{
+		Domain:          domain,
+		Path:            path,
+		PHPVersion:      phpVersion,
+		PHPVersionShort: phpShort(phpVersion),
+		CertDomain:      parentDomain,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(config.NginxConfD(), 0755); err != nil {
+		return err
+	}
+	confPath := filepath.Join(config.NginxConfD(), domain+".conf")
 	return os.WriteFile(confPath, buf.Bytes(), 0644)
 }
 
@@ -144,6 +211,17 @@ func GenerateProxyVhost(domain, upstreamHost string, upstreamPort int) error {
 func Reload() error {
 	_, err := podman.Run("exec", "lerd-nginx", "nginx", "-s", "reload")
 	return err
+}
+
+// EnsureDefaultVhost writes a catch-all default server that returns 444 for any
+// request that doesn't match a registered site. This prevents nginx from falling
+// back to the first alphabetical vhost for unknown hostnames.
+func EnsureDefaultVhost() error {
+	if err := os.MkdirAll(config.NginxConfD(), 0755); err != nil {
+		return err
+	}
+	content := "server {\n    listen 80 default_server;\n    return 444;\n}\nserver {\n    listen 443 default_server ssl;\n    ssl_reject_handshake on;\n}\n"
+	return os.WriteFile(filepath.Join(config.NginxConfD(), "_default.conf"), []byte(content), 0644)
 }
 
 // EnsureNginxConfig copies the base nginx.conf to the data dir if it is missing.

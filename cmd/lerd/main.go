@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/geodro/lerd/internal/cli"
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/dns"
+	gitpkg "github.com/geodro/lerd/internal/git"
 	"github.com/geodro/lerd/internal/nginx"
 	"github.com/geodro/lerd/internal/ui"
 	"github.com/geodro/lerd/internal/version"
@@ -137,6 +139,11 @@ func newWatchCmd() *cobra.Command {
 
 			fmt.Println("Lerd watcher started, monitoring:", cfg.ParkedDirectories)
 
+			// Ensure the catch-all default vhost is always present.
+			if err := nginx.EnsureDefaultVhost(); err != nil {
+				fmt.Printf("[WARN] default vhost: %v\n", err)
+			}
+
 			// Initial scan: register new projects.
 			reloadNeeded := false
 			for _, dir := range cfg.ParkedDirectories {
@@ -162,6 +169,11 @@ func newWatchCmd() *cobra.Command {
 				reloadNeeded = true
 			}
 
+			// Startup scan: generate vhosts for any existing worktrees.
+			if scanWorktrees() {
+				reloadNeeded = true
+			}
+
 			if reloadNeeded {
 				if err := nginx.Reload(); err != nil {
 					fmt.Printf("[WARN] nginx reload: %v\n", err)
@@ -176,6 +188,60 @@ func newWatchCmd() *cobra.Command {
 							fmt.Printf("[WARN] nginx reload: %v\n", err)
 						}
 					}
+				}
+			}()
+
+			// Watch for git worktree additions/removals.
+			go func() {
+				err := watcher.WatchWorktrees(
+					func() []string {
+						return mainRepoSitePaths()
+					},
+					func(sitePath, worktreeName string) {
+						site, err := config.FindSiteByPath(sitePath)
+						if err != nil {
+							return
+						}
+						worktrees, err := gitpkg.DetectWorktrees(sitePath, site.Domain)
+						if err != nil {
+							return
+						}
+						phpVersion := site.PHPVersion
+						for _, wt := range worktrees {
+							if wt.Name == worktreeName {
+								gitpkg.EnsureWorktreeDeps(sitePath, wt.Path, wt.Domain, site.Secured)
+								var vhostErr error
+								if site.Secured {
+									vhostErr = nginx.GenerateWorktreeSSLVhost(wt.Domain, wt.Path, phpVersion, site.Domain)
+								} else {
+									vhostErr = nginx.GenerateWorktreeVhost(wt.Domain, wt.Path, phpVersion)
+								}
+								if vhostErr != nil {
+									fmt.Printf("[WARN] worktree vhost for %s: %v\n", wt.Domain, vhostErr)
+									return
+								}
+								fmt.Printf("Worktree added: %s -> %s\n", wt.Branch, wt.Domain)
+								if err := nginx.Reload(); err != nil {
+									fmt.Printf("[WARN] nginx reload: %v\n", err)
+								}
+								return
+							}
+						}
+					},
+					func(sitePath, _ string) {
+						site, err := config.FindSiteByPath(sitePath)
+						if err != nil {
+							return
+						}
+						if cleanupWorktreeVhosts(site) {
+							if err := nginx.Reload(); err != nil {
+								fmt.Printf("[WARN] nginx reload: %v\n", err)
+							}
+						}
+					},
+				)
+				if err != nil {
+					fmt.Printf("[WARN] worktree watcher: %v\n", err)
 				}
 			}()
 
@@ -206,6 +272,91 @@ func newWatchCmd() *cobra.Command {
 			})
 		},
 	}
+}
+
+// mainRepoSitePaths returns the paths of non-ignored sites whose .git is a directory.
+func mainRepoSitePaths() []string {
+	reg, err := config.LoadSites()
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, s := range reg.Sites {
+		if s.Ignored {
+			continue
+		}
+		if gitpkg.IsMainRepo(s.Path) {
+			paths = append(paths, s.Path)
+		}
+	}
+	return paths
+}
+
+// scanWorktrees generates vhosts for all existing worktrees across all main-repo sites.
+// Returns true if any vhosts were generated.
+func scanWorktrees() bool {
+	reg, err := config.LoadSites()
+	if err != nil {
+		return false
+	}
+	generated := false
+	for _, s := range reg.Sites {
+		if s.Ignored {
+			continue
+		}
+		worktrees, err := gitpkg.DetectWorktrees(s.Path, s.Domain)
+		if err != nil || len(worktrees) == 0 {
+			continue
+		}
+		for _, wt := range worktrees {
+			gitpkg.EnsureWorktreeDeps(s.Path, wt.Path, wt.Domain, s.Secured)
+			var vhostErr error
+			if s.Secured {
+				vhostErr = nginx.GenerateWorktreeSSLVhost(wt.Domain, wt.Path, s.PHPVersion, s.Domain)
+			} else {
+				vhostErr = nginx.GenerateWorktreeVhost(wt.Domain, wt.Path, s.PHPVersion)
+			}
+			if vhostErr != nil {
+				fmt.Printf("[WARN] worktree vhost for %s: %v\n", wt.Domain, vhostErr)
+				continue
+			}
+			fmt.Printf("Worktree vhost: %s -> %s\n", wt.Branch, wt.Domain)
+			generated = true
+		}
+	}
+	return generated
+}
+
+// cleanupWorktreeVhosts removes all subdomain vhosts for the given site's domain,
+// then re-generates for worktrees still on disk. Returns true if any change was made.
+func cleanupWorktreeVhosts(site *config.Site) bool {
+	confD := config.NginxConfD()
+	entries, err := os.ReadDir(confD)
+	if err != nil {
+		return false
+	}
+	suffix := "." + site.Domain + ".conf"
+	changed := false
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), suffix) {
+			_ = os.Remove(filepath.Join(confD, e.Name()))
+			changed = true
+		}
+	}
+	// Re-generate for worktrees still present
+	worktrees, _ := gitpkg.DetectWorktrees(site.Path, site.Domain)
+	for _, wt := range worktrees {
+		var vhostErr error
+		if site.Secured {
+			vhostErr = nginx.GenerateWorktreeSSLVhost(wt.Domain, wt.Path, site.PHPVersion, site.Domain)
+		} else {
+			vhostErr = nginx.GenerateWorktreeVhost(wt.Domain, wt.Path, site.PHPVersion)
+		}
+		if vhostErr != nil {
+			fmt.Printf("[WARN] worktree vhost for %s: %v\n", wt.Domain, vhostErr)
+		}
+	}
+	return changed
 }
 
 // removeStale removes registered sites under parked directories whose paths no

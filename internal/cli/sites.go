@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/geodro/lerd/internal/config"
+	gitpkg "github.com/geodro/lerd/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -52,6 +53,19 @@ func runSites(_ *cobra.Command, _ []string) error {
 			tls,
 			s.Path,
 		)
+		if gitpkg.IsMainRepo(s.Path) {
+			worktrees, _ := gitpkg.DetectWorktrees(s.Path, s.Domain)
+			for _, wt := range worktrees {
+				fmt.Printf("  %-23s %-35s %-8s %-8s %-5s %s\n",
+					"↳ "+truncate(wt.Branch, 21),
+					truncate(wt.Domain, 35),
+					s.PHPVersion,
+					s.NodeVersion,
+					"—",
+					wt.Path,
+				)
+			}
+		}
 	}
 
 	return nil
