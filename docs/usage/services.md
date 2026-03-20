@@ -187,13 +187,6 @@ Point the Stripe PHP SDK at the mock in your `AppServiceProvider` or test bootst
 \Stripe\Stripe::$apiBase = 'http://lerd-stripe-mock:12111';
 ```
 
-**stripe:listen** — forwards live/test webhook events from Stripe to your local app via the Stripe CLI. Requires a real Stripe API key.
-
-```bash
-lerd stripe:listen                        # forwards to https://myapp.test/stripe/webhook
-lerd stripe:listen --path /webhooks/stripe
-```
-
 ### Flag reference
 
 | Flag | Description |
