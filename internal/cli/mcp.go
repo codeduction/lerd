@@ -323,6 +323,11 @@ Start or stop a Laravel queue worker for a site. The worker runs ` + bt + `php a
 - ` + bt + `tries` + bt + ` (optional): max job attempts, default ` + bt + `3` + bt + `
 - ` + bt + `timeout` + bt + ` (optional): job timeout in seconds, default ` + bt + `60` + bt + `
 
+### ` + bt + `db_export` + bt + `
+Export the project's database to a SQL dump file. Arguments:
+- ` + bt + `path` + bt + ` (required): absolute path to the Laravel project root
+- ` + bt + `output` + bt + ` (optional): output file path (defaults to ` + bt + `<database>.sql` + bt + ` in the project root)
+
 ### ` + bt + `logs` + bt + `
 Fetch recent container logs. Target can be:
 - ` + bt + `"nginx"` + bt + ` — nginx proxy logs
@@ -393,6 +398,12 @@ service_add(name: "mongodb", image: "docker.io/library/mongo:7", ports: ["27017:
 service_start(name: "mongodb")
 ` + "```" + `
 
+**Back up the database before a risky migration:**
+` + "```" + `
+db_export(path, output: "/tmp/myapp-backup.sql")
+artisan(path, args: ["migrate"])
+` + "```" + `
+
 **Diagnose PHP errors:**
 ` + "```" + `
 logs(target: "8.4")     // PHP-FPM errors
@@ -450,6 +461,7 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 | ` + bt + `service_stop` + bt + ` | Stop a service |
 | ` + bt + `service_add` + bt + ` | Register a new custom OCI service (MongoDB, RabbitMQ, …) |
 | ` + bt + `service_remove` + bt + ` | Stop and deregister a custom service |
+| ` + bt + `db_export` + bt + ` | Export the project database to a SQL dump file |
 | ` + bt + `queue_start` + bt + ` | Start a queue worker for a site |
 | ` + bt + `queue_stop` + bt + ` | Stop a queue worker |
 | ` + bt + `logs` + bt + ` | Fetch container logs (nginx, service name, PHP version, or site name) |
