@@ -33,7 +33,9 @@ Shows all available services (MySQL, Redis, PostgreSQL, Meilisearch, MinIO, Mail
 
 ## System tab
 
-Health check panel for DNS, nginx, PHP-FPM containers, and the autostart toggle.
+Health check panel for DNS, nginx, PHP-FPM containers, installed Node.js versions, and the autostart toggle.
+
+The **Node.js card** lists all versions installed via fnm and includes an inline install form — enter a version number (e.g. `22`) and click **Install**. This is equivalent to running `lerd node:install <version>` from the terminal.
 
 ## Updates
 

@@ -7,6 +7,25 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.9] — 2026-03-20
+
+### Added
+
+- **`lerd node:install <version>`** — install a Node.js version globally via fnm
+- **`lerd node:uninstall <version>`** — uninstall a Node.js version via fnm
+- **Node.js card in System tab** — lists all installed Node versions with an inline install form; replaces the install form that was previously in the Services tab
+- **`lerd php:rebuild` now restarts containers** — automatically restarts all FPM containers after rebuilding images instead of printing manual instructions
+
+### Fixed
+
+- **`lerd tray` not opening after update** — `install.sh --update` was not copying the `lerd-tray` helper binary alongside `lerd`
+- **`laravel new` and other PHP CLI tools now work end-to-end** — the PHP-FPM container image now includes Composer and Node.js/npm so subprocesses spawned by PHP (e.g. `composer create-project`, `npm install`) resolve correctly inside the container
+- **`composer` and `laravel` global tools found inside container** — `lerd php` now passes the correct `HOME` and `COMPOSER_HOME` env vars and includes the Composer global bin dir in PATH so globally installed tools like the Laravel installer are found
+- **Node/npm/npx shims work inside containers** — shims now use `fnm` directly (statically linked, works in Alpine) instead of calling `lerd` (glibc binary, incompatible with Alpine musl)
+- **Shims use absolute paths** — `php`, `composer`, `node`, `npm`, `npx` shims now reference their binaries by absolute path, eliminating PATH-dependent failures in subprocess contexts
+
+---
+
 ## [0.5.4] — 2026-03-19
 
 ### Added

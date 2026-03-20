@@ -46,10 +46,14 @@ func runPhpRebuild(_ *cobra.Command, _ []string) error {
 		fmt.Printf("  [WARN] could not store image hash: %v\n", err)
 	}
 
-	fmt.Println("\nAll PHP-FPM images rebuilt.")
-	fmt.Println("Restart FPM containers to use the new images:")
+	fmt.Println("\nAll PHP-FPM images rebuilt. Restarting containers...")
 	for _, v := range versions {
-		fmt.Printf("  systemctl --user restart lerd-php%s-fpm\n", strings.ReplaceAll(v, ".", ""))
+		unit := "lerd-php" + strings.ReplaceAll(v, ".", "") + "-fpm"
+		if err := podman.RestartUnit(unit); err != nil {
+			fmt.Printf("  [WARN] restart %s: %v\n", unit, err)
+		} else {
+			fmt.Printf("  restarted %s\n", unit)
+		}
 	}
 
 	return nil

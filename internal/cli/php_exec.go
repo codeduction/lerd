@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/geodro/lerd/internal/config"
@@ -39,7 +40,25 @@ func runPhp(_ *cobra.Command, args []string) error {
 	short := strings.ReplaceAll(version, ".", "")
 	container := "lerd-php" + short + "-fpm"
 
-	cmdArgs := []string{"exec", "-it", "-w", cwd, container, "php"}
+	home := os.Getenv("HOME")
+	composerHome := os.Getenv("COMPOSER_HOME")
+	if composerHome == "" {
+		// Respect XDG: prefer ~/.config/composer, fall back to ~/.composer
+		xdgConfig := os.Getenv("XDG_CONFIG_HOME")
+		if xdgConfig == "" {
+			xdgConfig = filepath.Join(home, ".config")
+		}
+		composerHome = filepath.Join(xdgConfig, "composer")
+	}
+	composerBin := filepath.Join(composerHome, "vendor", "bin")
+
+	cmdArgs := []string{
+		"exec", "-it", "-w", cwd,
+		"--env", "HOME=" + home,
+		"--env", "COMPOSER_HOME=" + composerHome,
+		"--env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + composerBin,
+		container, "php",
+	}
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.Command("podman", cmdArgs...)

@@ -65,6 +65,10 @@ RUN apk update && apk add --no-cache \
     && { (pecl install mongodb && docker-php-ext-enable mongodb) || true; } \
     && rm -rf /tmp/pear /var/cache/apk/*
 
+# Install Composer and Node.js (for CLI tools like laravel new that spawn npm)
+COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+RUN apk add --no-cache nodejs npm
+
 # Override pool: run workers as root, log errors to stderr
 RUN printf '[www]\nuser=root\ngroup=root\ncatch_workers_output=yes\nphp_flag[display_errors]=off\nphp_admin_value[error_log]=/proc/self/fd/2\nphp_admin_flag[log_errors]=on\n' > /usr/local/etc/php-fpm.d/zz-lerd.conf
 

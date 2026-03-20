@@ -52,8 +52,6 @@
 | `lerd php:list` | List all installed PHP-FPM versions |
 | `lerd php:rebuild` | Force-rebuild all installed PHP-FPM images |
 | `lerd fetch [version...]` | Pre-build PHP FPM images for the given (or all supported) versions |
-| `lerd php [args...]` | Run PHP in the project's container |
-| `lerd artisan [args...]` | Run `php artisan` in the project's container |
 | `lerd xdebug on [version]` | Enable Xdebug for a PHP version |
 | `lerd xdebug off [version]` | Disable Xdebug |
 | `lerd xdebug status` | Show Xdebug enabled/disabled for all installed PHP versions |
@@ -66,10 +64,9 @@
 
 | Command | Description |
 |---|---|
+| `lerd node:install <version>` | Install a Node.js version globally via fnm |
+| `lerd node:uninstall <version>` | Uninstall a Node.js version via fnm |
 | `lerd isolate:node <version>` | Pin Node version for cwd — writes `.node-version`, runs `fnm install` |
-| `lerd node [args...]` | Run node using the project's version via fnm |
-| `lerd npm [args...]` | Run npm using the project's version via fnm |
-| `lerd npx [args...]` | Run npx using the project's version via fnm |
 
 ## Services
 

@@ -443,22 +443,38 @@ func (p *progressReader) Read(b []byte) (int, error) {
 func addShellShims() error {
 	home, _ := os.UserHomeDir()
 	binDir := config.BinDir()
+	lerdBin := filepath.Join(home, ".local", "bin", "lerd")
+	fnmBin := filepath.Join(binDir, "fnm")
 
 	// Write php shim
-	phpShim := "#!/bin/sh\nexec lerd php \"$@\"\n"
+	phpShim := fmt.Sprintf("#!/bin/sh\nexec %s php \"$@\"\n", lerdBin)
 	if err := os.WriteFile(filepath.Join(binDir, "php"), []byte(phpShim), 0755); err != nil {
 		return fmt.Errorf("writing php shim: %w", err)
 	}
 
 	// Write composer shim
-	composerShim := fmt.Sprintf("#!/bin/sh\nexec lerd php %s/.local/share/lerd/bin/composer.phar \"$@\"\n", home)
+	composerShim := fmt.Sprintf("#!/bin/sh\nexec %s php %s/.local/share/lerd/bin/composer.phar \"$@\"\n", lerdBin, home)
 	if err := os.WriteFile(filepath.Join(binDir, "composer"), []byte(composerShim), 0755); err != nil {
 		return fmt.Errorf("writing composer shim: %w", err)
 	}
 
-	// Write node/npm/npx shims
+	// Write node/npm/npx shims — use fnm directly so they work inside containers
+	// (lerd is glibc-linked and cannot run inside Alpine-based PHP containers).
+	nodeShimTmpl := `#!/bin/sh
+FNM="%s"
+VERSION=""
+for f in .node-version .nvmrc; do
+  [ -f "$f" ] && VERSION=$(tr -d '[:space:]' < "$f") && break
+done
+if [ -n "$VERSION" ]; then
+  "$FNM" install "$VERSION" >/dev/null 2>&1 || true
+  exec "$FNM" exec --using="$VERSION" -- %s "$@"
+else
+  exec "$FNM" exec --using=default -- %s "$@"
+fi
+`
 	for _, bin := range []string{"node", "npm", "npx"} {
-		shim := fmt.Sprintf("#!/bin/sh\nexec lerd %s \"$@\"\n", bin)
+		shim := fmt.Sprintf(nodeShimTmpl, fnmBin, bin, bin)
 		if err := os.WriteFile(filepath.Join(binDir, bin), []byte(shim), 0755); err != nil {
 			return fmt.Errorf("writing %s shim: %w", bin, err)
 		}

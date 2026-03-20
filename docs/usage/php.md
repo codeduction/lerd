@@ -9,8 +9,6 @@
 | `lerd php:list` | List all installed PHP-FPM versions |
 | `lerd php:rebuild` | Force-rebuild all installed PHP-FPM images (run after `lerd update` if needed) |
 | `lerd fetch [version...]` | Pre-build PHP FPM images for the given (or all supported) versions so first use isn't slow |
-| `lerd php [args...]` | Run PHP in the project's container |
-| `lerd artisan [args...]` | Run `php artisan` in the project's container |
 | `lerd xdebug on [version]` | Enable Xdebug for a PHP version — rebuilds the FPM image and restarts the container |
 | `lerd xdebug off [version]` | Disable Xdebug — rebuilds without Xdebug and restarts |
 | `lerd xdebug status` | Show Xdebug enabled/disabled for all installed PHP versions |
@@ -20,6 +18,17 @@
 | `lerd php:ini [version]` | Open the user php.ini for a PHP version in `$EDITOR` |
 
 If no version is given, the version is resolved from the current directory (`.php-version` or `composer.json`, falling back to the global default).
+
+---
+
+## Usage
+
+`lerd install` places shims for `php` and `composer` in `~/.local/share/lerd/bin/`, which is added to your `PATH`. You use them exactly as you normally would — lerd routes them through the correct PHP-FPM container version automatically:
+
+```bash
+php artisan migrate
+composer install
+```
 
 ---
 

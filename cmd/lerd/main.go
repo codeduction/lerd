@@ -39,6 +39,8 @@ func main() {
 	root.AddCommand(cli.NewUseCmd())
 	root.AddCommand(cli.NewIsolateCmd())
 	root.AddCommand(cli.NewIsolateNodeCmd())
+	root.AddCommand(cli.NewNodeInstallCmd())
+	root.AddCommand(cli.NewNodeUninstallCmd())
 	root.AddCommand(cli.NewPhpListCmd())
 	root.AddCommand(cli.NewPhpRebuildCmd())
 	root.AddCommand(cli.NewPhpCmd())

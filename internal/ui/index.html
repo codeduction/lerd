@@ -404,33 +404,6 @@
         </div>
       </template>
 
-      <!-- Install Node version -->
-      <div class="mt-8 pt-6 border-t border-gray-200 dark:border-lerd-border">
-        <h3 class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-3">Install Node version</h3>
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            x-model="nodeInstall.version"
-            @keydown.enter="installNodeVersion()"
-            placeholder="e.g. 22"
-            class="text-sm bg-white dark:bg-lerd-card border border-gray-200 dark:border-lerd-border rounded-lg px-3 py-1.5 w-28 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-lerd-red/50 transition-colors"
-            :disabled="nodeInstall.installing"
-          >
-          <button
-            @click="installNodeVersion()"
-            :disabled="nodeInstall.installing || !nodeInstall.version.trim()"
-            class="text-sm bg-lerd-red hover:bg-lerd-redhov text-white rounded-lg px-4 py-1.5 transition-colors disabled:opacity-40 flex items-center gap-1.5 font-medium"
-          >
-            <svg x-show="nodeInstall.installing" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-            </svg>
-            <span x-text="nodeInstall.installing ? 'Installing...' : 'Install'"></span>
-          </button>
-          <span x-show="nodeInstall.done" class="text-sm text-emerald-600 dark:text-emerald-500">Installed!</span>
-          <span x-show="nodeInstall.error" class="text-sm text-red-500" x-text="nodeInstall.error"></span>
-        </div>
-      </div>
     </div>
 
     <!-- ===== SYSTEM TAB ===== -->
@@ -547,6 +520,52 @@
                   </div>
                 </div>
               </template>
+            </div>
+          </div>
+
+          <!-- Node.js card -->
+          <div class="bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border p-5">
+            <div class="flex items-center gap-2.5 mb-4">
+              <div class="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
+              </div>
+              <h3 class="font-semibold text-gray-900 dark:text-white">Node.js</h3>
+            </div>
+            <div x-show="nodeVersions.length === 0" class="mb-4">
+              <p class="text-sm text-gray-500">No Node versions installed.</p>
+            </div>
+            <div x-show="nodeVersions.length > 0" class="space-y-2.5 mb-4">
+              <template x-for="v in nodeVersions" :key="v">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-sm text-gray-500 shrink-0">Node <span x-text="v" class="text-gray-700 dark:text-gray-300 font-medium"></span></span>
+                </div>
+              </template>
+            </div>
+            <div class="pt-3 border-t border-gray-100 dark:border-lerd-border">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Install version</p>
+              <div class="flex items-center gap-2">
+                <input
+                  type="text"
+                  x-model="nodeInstall.version"
+                  @keydown.enter="installNodeVersion()"
+                  placeholder="e.g. 22"
+                  class="text-sm bg-white dark:bg-lerd-card border border-gray-200 dark:border-lerd-border rounded-lg px-3 py-1.5 w-24 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-lerd-red/50 transition-colors"
+                  :disabled="nodeInstall.installing"
+                >
+                <button
+                  @click="installNodeVersion()"
+                  :disabled="nodeInstall.installing || !nodeInstall.version.trim()"
+                  class="text-sm bg-lerd-red hover:bg-lerd-redhov text-white rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40 flex items-center gap-1.5 font-medium"
+                >
+                  <svg x-show="nodeInstall.installing" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                  </svg>
+                  <span x-text="nodeInstall.installing ? 'Installing...' : 'Install'"></span>
+                </button>
+                <span x-show="nodeInstall.done" class="text-xs text-emerald-600 dark:text-emerald-500">Installed!</span>
+                <span x-show="nodeInstall.error" class="text-xs text-red-500" x-text="nodeInstall.error"></span>
+              </div>
             </div>
           </div>
 
@@ -687,7 +706,10 @@ function lerdApp() {
       this.loadServices();
       this.loadStatus();
       this._statusInterval = setInterval(() => {
-        if (this.tab === 'system') this.loadStatus();
+        if (this.tab === 'system') {
+          this.loadStatus();
+          this.loadNodeVersions();
+        }
       }, 10000);
       this._sitesInterval = setInterval(() => {
         if (this.tab === 'sites') {

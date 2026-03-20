@@ -395,6 +395,7 @@ cmd_update() {
   local tmpdir; tmpdir="$(mktemp -d)"
   download_binary "$latest" "$arch" "$tmpdir"
   install -m 755 "${tmpdir}/lerd" "${INSTALL_DIR}/${BINARY}"
+  [ -f "${tmpdir}/lerd-tray" ] && install -m 755 "${tmpdir}/lerd-tray" "${INSTALL_DIR}/lerd-tray"
   rm -rf "$tmpdir"
   success "Updated to lerd v${latest}"
 }
