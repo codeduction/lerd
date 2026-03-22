@@ -145,10 +145,11 @@ func WatchWorktrees(
 				continue
 			}
 
-		case _, ok := <-w.Errors:
+		case err, ok := <-w.Errors:
 			if !ok {
 				return nil
 			}
+			logger.Error("fsnotify error", "err", err)
 		}
 	}
 }
@@ -169,6 +170,7 @@ func handleNewEntry(entryDir, sitePath, name string, onAdded func(string, string
 		time.Sleep(500 * time.Millisecond)
 	}
 	if checkoutPath == "" {
+		logger.Warn("timed out waiting for gitdir in worktree entry", "entry", entryDir)
 		return
 	}
 	// Wait up to 10s for the checkout directory to be fully created.
@@ -179,6 +181,7 @@ func handleNewEntry(entryDir, sitePath, name string, onAdded func(string, string
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	logger.Warn("timed out waiting for worktree checkout directory", "path", checkoutPath)
 }
 
 // checkoutPathFromGitdir reads the gitdir file and returns the checkout path.

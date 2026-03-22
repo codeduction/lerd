@@ -75,7 +75,7 @@
           >System</button>
         </div>
 
-        <!-- Right side: update controls -->
+        <!-- Right side -->
         <div class="flex items-center gap-3 order-2 sm:order-3">
           <!-- Theme toggle -->
           <div class="flex items-center rounded-md border border-gray-200 dark:border-lerd-border overflow-hidden text-xs">
@@ -87,31 +87,6 @@
               ><span class="hidden sm:inline" x-text="m"></span><span class="sm:hidden" x-text="m[0].toUpperCase()"></span></button>
             </template>
           </div>
-
-          <template x-if="!version.checked">
-            <button
-              @click="checkVersion()"
-              :disabled="version.checking"
-              class="hidden sm:inline-block text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors disabled:opacity-40"
-            >
-              <span x-show="!version.checking">Check for updates</span>
-              <span x-show="version.checking">Checking...</span>
-            </button>
-          </template>
-
-          <template x-if="version.checked && !version.hasUpdate">
-            <span class="hidden sm:flex text-xs text-emerald-600 dark:text-emerald-500 items-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-              Up to date
-            </span>
-          </template>
-
-          <template x-if="version.checked && version.hasUpdate">
-            <div class="hidden sm:flex items-center gap-2">
-              <span class="text-xs text-yellow-600 dark:text-yellow-400" x-text="version.latest + ' available'"></span>
-              <span class="hidden sm:inline text-xs text-gray-500 dark:text-gray-400">— run <code class="font-mono bg-gray-100 dark:bg-white/10 px-1 rounded">lerd update</code> in a terminal</span>
-            </div>
-          </template>
         </div>
       </div>
     </div>
@@ -660,64 +635,97 @@
         <div class="flex flex-col sm:flex-row gap-4 sm:items-start">
 
           <!-- Mobile: horizontal service picker -->
-          <div class="sm:hidden w-full flex overflow-x-auto gap-2 pb-2 -mx-3 px-3">
-            <template x-for="svc in services" :key="'pill-'+svc.name">
-              <button
-                @click="selectService(svc)"
-                class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors"
-                :class="selectedSvc === svc.name
-                  ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red'
-                  : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'"
-              >
-                <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
-                <span x-text="svc.queue_site ? svc.queue_site : svc.stripe_listener_site ? svc.stripe_listener_site : svc.schedule_worker_site ? svc.schedule_worker_site : svc.reverb_site ? svc.reverb_site : capitalize(svc.name)"></span>
-              </button>
+          <div class="sm:hidden w-full space-y-1">
+            <!-- Core services pills -->
+            <div class="flex overflow-x-auto gap-2 pb-1 -mx-3 px-3">
+              <template x-for="svc in coreServices()" :key="'pill-'+svc.name">
+                <button
+                  @click="selectService(svc)"
+                  class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors"
+                  :class="selectedSvc === svc.name ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                  <span x-text="capitalize(svc.name)"></span>
+                </button>
+              </template>
+              <!-- Worker group toggle pills -->
+              <template x-for="group in workerGroups()" :key="'grp-pill-'+group.key">
+                <button
+                  @click="toggleWorkerGroup(group.key)"
+                  class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors"
+                  :class="openWorkerGroup === group.key ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="group.items.some(s => s.status === 'active') ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                  <span x-text="group.label"></span>
+                  <span class="tabular-nums" x-text="group.items.length"></span>
+                  <svg class="w-3 h-3 transition-transform" :class="openWorkerGroup === group.key ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+              </template>
+            </div>
+            <!-- Expanded worker group sub-pills -->
+            <template x-for="group in workerGroups()" :key="'grp-sub-'+group.key">
+              <div x-show="openWorkerGroup === group.key" class="flex overflow-x-auto gap-2 pb-1 -mx-3 px-3">
+                <template x-for="svc in group.items" :key="'subpill-'+svc.name">
+                  <button
+                    @click="selectService(svc)"
+                    class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors"
+                    :class="selectedSvc === svc.name ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                    <span x-text="workerSiteName(svc)"></span>
+                  </button>
+                </template>
+              </div>
             </template>
           </div>
 
           <!-- Service list (desktop only) -->
           <div class="hidden sm:block sm:w-56 sm:shrink-0 bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border overflow-hidden">
-            <template x-for="svc in services" :key="svc.name">
+            <!-- Core services -->
+            <template x-for="svc in coreServices()" :key="svc.name">
               <button
                 @click="selectService(svc)"
-                class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors border-b border-gray-100 dark:border-lerd-border last:border-0"
-                :class="selectedSvc === svc.name
-                  ? 'bg-lerd-red/10 text-lerd-red'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
+                class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors border-b border-gray-100 dark:border-lerd-border"
+                :class="selectedSvc === svc.name ? 'bg-lerd-red/10 text-lerd-red' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
               >
-                <span
-                  class="w-2 h-2 rounded-full shrink-0"
-                  :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"
-                ></span>
-                <span class="font-medium truncate flex-1"
-                  x-text="svc.queue_site ? svc.queue_site : svc.stripe_listener_site ? svc.stripe_listener_site : svc.schedule_worker_site ? svc.schedule_worker_site : svc.reverb_site ? svc.reverb_site : capitalize(svc.name)"></span>
-                <template x-if="svc.queue_site">
-                  <span class="text-[10px] font-medium shrink-0 px-1 py-0.5 rounded"
-                    :class="selectedSvc === svc.name ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'"
-                  >queue</span>
-                </template>
-                <template x-if="svc.stripe_listener_site">
-                  <span class="text-[10px] font-medium shrink-0 px-1 py-0.5 rounded"
-                    :class="selectedSvc === svc.name ? 'bg-violet-500/20 text-violet-600 dark:text-violet-400' : 'bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400'"
-                  >stripe</span>
-                </template>
-                <template x-if="svc.schedule_worker_site">
-                  <span class="text-[10px] font-medium shrink-0 px-1 py-0.5 rounded"
-                    :class="selectedSvc === svc.name ? 'bg-teal-500/20 text-teal-600 dark:text-teal-400' : 'bg-teal-100 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400'"
-                  >schedule</span>
-                </template>
-                <template x-if="svc.reverb_site">
-                  <span class="text-[10px] font-medium shrink-0 px-1 py-0.5 rounded"
-                    :class="selectedSvc === svc.name ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-sky-100 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400'"
-                  >reverb</span>
-                </template>
-                <template x-if="!svc.queue_site && !svc.stripe_listener_site && !svc.schedule_worker_site && !svc.reverb_site && svc.site_count > 0">
+                <span class="w-2 h-2 rounded-full shrink-0" :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                <span class="font-medium truncate flex-1" x-text="capitalize(svc.name)"></span>
+                <template x-if="svc.site_count > 0">
                   <span class="text-[10px] font-medium tabular-nums shrink-0"
                     :class="selectedSvc === svc.name ? 'text-lerd-red/70' : 'text-gray-400 dark:text-gray-600'"
-                    x-text="svc.site_count"
-                  ></span>
+                    x-text="svc.site_count"></span>
                 </template>
               </button>
+            </template>
+
+            <!-- Worker group accordions -->
+            <template x-for="group in workerGroups()" :key="'grp-'+group.key">
+              <div class="border-t border-gray-100 dark:border-lerd-border">
+                <!-- Accordion header -->
+                <button
+                  @click="toggleWorkerGroup(group.key)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors"
+                  :class="openWorkerGroup === group.key ? 'bg-gray-50 dark:bg-white/[0.03] text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
+                >
+                  <span class="w-2 h-2 rounded-full shrink-0" :class="group.items.some(s => s.status === 'active') ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                  <span class="font-medium flex-1" x-text="group.label"></span>
+                  <span class="text-[10px] font-medium tabular-nums text-gray-400 dark:text-gray-600" x-text="group.items.length"></span>
+                  <svg class="w-3.5 h-3.5 shrink-0 transition-transform duration-150" :class="openWorkerGroup === group.key ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <!-- Accordion items -->
+                <div x-show="openWorkerGroup === group.key">
+                  <template x-for="svc in group.items" :key="'grp-item-'+svc.name">
+                    <button
+                      @click="selectService(svc)"
+                      class="w-full flex items-center gap-2.5 pl-7 pr-3 py-2 text-sm text-left transition-colors border-t border-gray-100 dark:border-lerd-border"
+                      :class="selectedSvc === svc.name ? 'bg-lerd-red/10 text-lerd-red' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
+                    >
+                      <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="svc.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                      <span class="font-medium truncate flex-1" x-text="workerSiteName(svc)"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
             </template>
           </div>
 
@@ -955,6 +963,9 @@
             <button @click="selectSystem('nginx')" class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors" :class="selectedSystem === 'nginx' ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'">
               <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="systemStatus.nginx && systemStatus.nginx.running ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>Nginx
             </button>
+            <button @click="selectSystem('watcher')" class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors" :class="selectedSystem === 'watcher' ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="systemStatus.watcher_running ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>Watcher
+            </button>
             <template x-for="v in phpVersions" :key="'php-pill-'+v">
               <button @click="selectSystem('php-' + v)" class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors" :class="selectedSystem === 'php-' + v ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'">
                 <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="fpmRunning(v) ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
@@ -972,6 +983,9 @@
             </button>
             <button @click="selectSystem('autostart')" class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors" :class="selectedSystem === 'autostart' ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'">
               <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="autostartEnabled ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>Autostart
+            </button>
+            <button @click="selectSystem('lerd')" class="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap transition-colors" :class="selectedSystem === 'lerd' ? 'bg-lerd-red/10 border-lerd-red/30 text-lerd-red' : 'bg-white dark:bg-lerd-card border-gray-200 dark:border-lerd-border text-gray-600 dark:text-gray-400'">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="version.hasUpdate ? 'bg-yellow-400' : 'bg-gray-400 dark:bg-gray-600'"></span>Lerd
             </button>
           </div>
 
@@ -996,6 +1010,16 @@
             >
               <span class="w-2 h-2 rounded-full shrink-0" :class="systemStatus.nginx && systemStatus.nginx.running ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
               <span class="font-medium">Nginx</span>
+            </button>
+
+            <!-- Watcher -->
+            <button
+              @click="selectSystem('watcher')"
+              class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors border-b border-gray-100 dark:border-lerd-border"
+              :class="selectedSystem === 'watcher' ? 'bg-lerd-red/10 text-lerd-red' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
+            >
+              <span class="w-2 h-2 rounded-full shrink-0" :class="systemStatus.watcher_running ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
+              <span class="font-medium">Watcher</span>
             </button>
 
             <!-- PHP section -->
@@ -1066,6 +1090,17 @@
             >
               <span class="w-2 h-2 rounded-full shrink-0" :class="autostartEnabled ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-600'"></span>
               <span class="font-medium">Autostart</span>
+            </button>
+
+            <!-- Lerd version -->
+            <button
+              @click="selectSystem('lerd')"
+              class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors border-t border-gray-100 dark:border-lerd-border"
+              :class="selectedSystem === 'lerd' ? 'bg-lerd-red/10 text-lerd-red' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.03]'"
+            >
+              <span class="w-2 h-2 rounded-full shrink-0" :class="version.hasUpdate ? 'bg-yellow-400' : 'bg-gray-400 dark:bg-gray-600'"></span>
+              <span class="font-medium">Lerd</span>
+              <span x-show="version.hasUpdate" class="ml-auto text-xs font-medium text-yellow-600 dark:text-yellow-400">update</span>
             </button>
 
           </div>
@@ -1182,6 +1217,70 @@
                             'text-red-500':    line.includes('error') || line.includes('Error') || line.includes('crit'),
                             'text-yellow-600 dark:text-yellow-400': !line.includes('error') && !line.includes('Error') && !line.includes('crit') && line.includes('warn'),
                             'text-gray-600 dark:text-gray-400':   !line.includes('error') && !line.includes('Error') && !line.includes('crit') && !line.includes('warn')
+                          }"
+                          x-text="line"
+                        ></div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Watcher -->
+            <template x-if="selectedSystem === 'watcher'">
+              <div class="bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border overflow-hidden">
+                <div class="flex flex-wrap items-center justify-between gap-y-2 px-3 sm:px-5 py-4 border-b border-gray-100 dark:border-lerd-border">
+                  <span class="font-semibold text-gray-900 dark:text-white text-base">Watcher</span>
+                  <template x-if="systemStatus.watcher_running">
+                    <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-500 px-2.5 py-1 rounded-full">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Running
+                    </span>
+                  </template>
+                  <template x-if="!systemStatus.watcher_running">
+                    <div class="flex items-center gap-2">
+                      <span class="inline-flex items-center gap-1.5 text-xs font-medium bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-full">
+                        <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Stopped
+                      </span>
+                      <button
+                        @click="startWatcher()"
+                        :disabled="watcherStarting"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+                      >
+                        <svg x-show="watcherStarting" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                        <span x-text="watcherStarting ? 'Starting…' : 'Start'"></span>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <div class="px-3 sm:px-5 py-4 space-y-4">
+                  <p class="text-xs text-gray-400">Monitors parked directories, site files, git worktrees, and DNS health. Logs WARN and ERROR events by default; set <code class="bg-gray-100 dark:bg-white/5 px-1 rounded">LERD_DEBUG=1</code> in the service environment for verbose output.</p>
+                  <!-- Live logs -->
+                  <div>
+                    <div class="flex items-center justify-between mb-3">
+                      <div class="flex items-center gap-2.5">
+                        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Logs</span>
+                        <span class="flex items-center gap-1.5 text-[10px]" :class="systemLogs.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-gray-400 dark:text-gray-600'">
+                          <span class="w-1.5 h-1.5 rounded-full" :class="systemLogs.connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                          <span x-text="systemLogs.connected ? 'live' : 'disconnected'"></span>
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button @click="systemLogs.lines = []" class="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-400 transition-colors">Clear</button>
+                        <button @click="openWatcherLogs()" class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 border border-gray-200 dark:border-lerd-border hover:border-gray-300 dark:hover:border-lerd-muted rounded px-2 py-1 transition-colors">Reconnect</button>
+                      </div>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-black/40 rounded-lg max-h-80 overflow-y-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed space-y-0.5" x-ref="watcherLogScroll">
+                      <template x-if="systemLogs.lines.length === 0">
+                        <div class="text-gray-400 dark:text-gray-700 italic">No events yet — watcher is running quietly.</div>
+                      </template>
+                      <template x-for="(line, i) in systemLogs.lines" :key="i">
+                        <div
+                          class="whitespace-pre-wrap break-all"
+                          :class="{
+                            'text-red-500':    line.includes('level=ERROR') || line.includes('error'),
+                            'text-yellow-600 dark:text-yellow-400': !line.includes('level=ERROR') && !line.includes('error') && line.includes('level=WARN'),
+                            'text-gray-600 dark:text-gray-400':   !line.includes('level=ERROR') && !line.includes('error') && !line.includes('level=WARN')
                           }"
                           x-text="line"
                         ></div>
@@ -1425,6 +1524,57 @@
               </div>
             </template>
 
+            <!-- Lerd version & update -->
+            <template x-if="selectedSystem === 'lerd'">
+              <div class="bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border overflow-hidden">
+                <div class="flex flex-wrap items-center justify-between gap-y-2 px-3 sm:px-5 py-4 border-b border-gray-100 dark:border-lerd-border">
+                  <span class="font-semibold text-gray-900 dark:text-white text-base">Lerd</span>
+                  <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 font-mono" x-text="'v' + version.current"></span>
+                </div>
+                <div class="px-3 sm:px-5 py-4 space-y-4">
+
+                  <!-- Up to date -->
+                  <template x-if="version.checked && !version.hasUpdate">
+                    <div class="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-500">
+                      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                      You're on the latest version.
+                    </div>
+                  </template>
+
+                  <!-- Update available -->
+                  <template x-if="version.hasUpdate">
+                    <div class="space-y-3">
+                      <div class="flex flex-wrap items-center gap-3">
+                        <span class="inline-flex items-center gap-1.5 text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+                          <span x-text="version.latest + ' available'"></span>
+                        </span>
+                        <code class="text-xs bg-gray-100 dark:bg-white/10 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300">lerd update</code>
+                      </div>
+                      <template x-if="version.changelog">
+                        <div>
+                          <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">What's new</p>
+                          <pre class="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.03] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed border border-gray-100 dark:border-lerd-border" x-text="version.changelog"></pre>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Check button -->
+                  <button
+                    @click="checkVersion()"
+                    :disabled="version.checking"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 disabled:opacity-40 text-gray-700 dark:text-gray-300 transition-colors"
+                  >
+                    <svg x-show="version.checking" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                    <svg x-show="!version.checking" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span x-text="version.checking ? 'Checking…' : 'Check for updates'"></span>
+                  </button>
+
+                </div>
+              </div>
+            </template>
+
             <!-- Autostart -->
             <template x-if="selectedSystem === 'autostart'">
               <div class="bg-white dark:bg-lerd-card rounded-xl border border-gray-200 dark:border-lerd-border overflow-hidden">
@@ -1530,6 +1680,7 @@ function lerdApp() {
     servicesLoading: false,
     selectedSvc: null,
     svcDetailTab: 'logs',
+    openWorkerGroup: null,
     systemStatus: {},
     statusLoading: false,
     version: {
@@ -1538,6 +1689,7 @@ function lerdApp() {
       hasUpdate: false,
       checked: false,
       checking: false,
+      changelog: '',
     },
     _statusInterval: null,
     _sitesInterval: null,
@@ -1556,6 +1708,7 @@ function lerdApp() {
     nodeDefaultLoading: false,
     lerdStarting: false,
     lerdStopping: false,
+    watcherStarting: false,
     logs: {
       open: false,
       container: '',
@@ -1636,11 +1789,34 @@ function lerdApp() {
     },
 
     capitalize(s) { return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); },
+    coreServices() {
+      return this.services.filter(s => !s.queue_site && !s.schedule_worker_site && !s.stripe_listener_site && !s.reverb_site);
+    },
+    workerGroups() {
+      return [
+        { key: 'queue',    label: 'Queues',    items: this.services.filter(s => s.queue_site) },
+        { key: 'schedule', label: 'Schedules', items: this.services.filter(s => s.schedule_worker_site) },
+        { key: 'stripe',   label: 'Stripe',    items: this.services.filter(s => s.stripe_listener_site) },
+        { key: 'reverb',   label: 'Reverb',    items: this.services.filter(s => s.reverb_site) },
+      ].filter(g => g.items.length > 0);
+    },
+    workerSiteName(svc) {
+      return svc.queue_site || svc.schedule_worker_site || svc.stripe_listener_site || svc.reverb_site || svc.name;
+    },
+    toggleWorkerGroup(key) {
+      this.openWorkerGroup = this.openWorkerGroup === key ? null : key;
+    },
     async loadVersion() {
       try {
         const res = await fetch('/api/version');
         const data = await res.json();
         this.version.current = data.current || 'dev';
+        if (data.has_update) {
+          this.version.latest = data.latest || '';
+          this.version.hasUpdate = true;
+          this.version.checked = true;
+          this.version.changelog = data.changelog || '';
+        }
       } catch (_) {}
     },
 
@@ -1653,6 +1829,7 @@ function lerdApp() {
         this.version.latest = data.latest || '';
         this.version.hasUpdate = data.has_update || false;
         this.version.checked = true;
+        this.version.changelog = data.changelog || '';
       } catch (_) {
         this.version.checked = true;
         this.version.hasUpdate = false;
@@ -1977,6 +2154,7 @@ function lerdApp() {
       this.selectedSystem = item;
       if (item === 'dns' && this.systemStatus.dns?.ok) this.openSystemLogs('lerd-dns');
       if (item === 'nginx' && this.systemStatus.nginx?.running) this.openSystemLogs('lerd-nginx');
+      if (item === 'watcher') this.openWatcherLogs();
       if (item.startsWith('php-')) {
         const v = item.slice(4);
         if (this.fpmRunning(v)) this.openSystemLogs('lerd-php' + v.replace('.', '') + '-fpm');
@@ -1999,6 +2177,27 @@ function lerdApp() {
         if (this.systemLogs.lines.length > 500) this.systemLogs.lines.splice(0, this.systemLogs.lines.length - 500);
         this.$nextTick(() => {
           const el = this.$refs.nginxLogScroll;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+    },
+
+    openWatcherLogs() {
+      if (this.systemLogs._source) {
+        this.systemLogs._source.close();
+        this.systemLogs._source = null;
+      }
+      this.systemLogs.lines = [];
+      this.systemLogs.connected = false;
+      const src = new EventSource('/api/watcher/logs');
+      this.systemLogs._source = src;
+      src.onopen = () => { this.systemLogs.connected = true; };
+      src.onerror = () => { this.systemLogs.connected = false; };
+      src.onmessage = (e) => {
+        this.systemLogs.lines.push(e.data);
+        if (this.systemLogs.lines.length > 500) this.systemLogs.lines.splice(0, this.systemLogs.lines.length - 500);
+        this.$nextTick(() => {
+          const el = this.$refs.watcherLogScroll;
           if (el) el.scrollTop = el.scrollHeight;
         });
       };
@@ -2424,6 +2623,15 @@ function lerdApp() {
         await fetch('/api/lerd/stop', { method: 'POST' });
         await Promise.all([this.loadStatus(), this.loadServices(), this.loadSites()]);
       } catch (_) {} finally { this.lerdStopping = false; }
+    },
+
+    async startWatcher() {
+      this.watcherStarting = true;
+      try {
+        await fetch('/api/watcher/start', { method: 'POST' });
+        await this.loadStatus();
+        if (this.systemStatus.watcher_running) this.openWatcherLogs();
+      } catch (_) {} finally { this.watcherStarting = false; }
     },
 
     async loadStatus() {

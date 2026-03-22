@@ -1,5 +1,16 @@
 # Troubleshooting
 
+When something isn't working, start with the built-in diagnostics:
+
+```bash
+lerd doctor   # full check: podman, systemd, DNS, ports, images, config
+lerd status   # quick health snapshot of all running services
+```
+
+`lerd doctor` reports OK/FAIL/WARN for each check with a hint for every failure.
+
+---
+
 ??? bug "`.test` domains not resolving"
     Run the DNS check first:
 
@@ -58,11 +69,29 @@
     `lerd install` sets this automatically, but it may need to be re-applied after a kernel update.
 
 ??? bug "Watcher service not running"
-    The watcher auto-discovers new projects in parked directories. If sites aren't being picked up:
+    The watcher monitors parked directories, site config files, git worktrees, and DNS health. If sites aren't being auto-registered or queue workers aren't restarting on `.env` changes:
 
     ```bash
-    systemctl --user status lerd-watcher
-    systemctl --user start lerd-watcher
+    lerd status                            # shows watcher running/stopped
+    systemctl --user start lerd-watcher   # start it from the terminal
+    # or use the Start button in the UI → System → Watcher
+    ```
+
+    To see what the watcher is doing:
+
+    ```bash
+    journalctl --user -u lerd-watcher -f
+    # or open the live log stream in the UI → System → Watcher
+    ```
+
+    For verbose output (DEBUG level), set `LERD_DEBUG=1` in the service environment:
+
+    ```bash
+    systemctl --user edit lerd-watcher
+    # Add:
+    # [Service]
+    # Environment=LERD_DEBUG=1
+    systemctl --user restart lerd-watcher
     ```
 
 ??? bug "HTTPS certificate warning in browser"

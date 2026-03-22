@@ -61,8 +61,7 @@ func NewQuitCmd() *cobra.Command {
 }
 
 // coreUnits returns the container units managed by lerd start/stop.
-// Does not include lerd-ui or lerd-watcher — those are process units
-// stopped only by lerd quit.
+// Does not include lerd-ui or lerd-watcher — those are added separately in runStart.
 func coreUnits() []string {
 	units := []string{"lerd-dns", "lerd-nginx"}
 	versions, _ := phpPkg.ListInstalled()
@@ -124,7 +123,7 @@ func runStart(_ *cobra.Command, _ []string) error {
 	}
 
 	units := append(coreUnits(), installedServiceUnits()...)
-	units = append(units, "lerd-ui")
+	units = append(units, "lerd-ui", "lerd-watcher")
 	units = append(units, registeredQueueUnits()...)
 	units = append(units, registeredStripeUnits()...)
 	units = append(units, registeredScheduleUnits()...)

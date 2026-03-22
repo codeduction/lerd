@@ -69,6 +69,8 @@ Once the MCP server is connected, your AI assistant has access to:
 | `stripe_listen` | Start a Stripe webhook listener for a site (reads `STRIPE_SECRET` from `.env`) |
 | `stripe_listen_stop` | Stop the Stripe webhook listener |
 | `logs` | Fetch container logs — defaults to current site's FPM; optionally specify nginx, service name, PHP version, or site name |
+| `status` | Health snapshot of DNS, nginx, PHP-FPM containers, and the watcher — use when a site isn't loading |
+| `doctor` | Full diagnostic: podman, systemd, DNS, ports, PHP images, config, updates — use when the user reports setup issues |
 
 ---
 

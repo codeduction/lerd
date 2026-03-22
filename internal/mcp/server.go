@@ -13,6 +13,7 @@ import (
 
 	"github.com/geodro/lerd/internal/certs"
 	"github.com/geodro/lerd/internal/config"
+	"github.com/geodro/lerd/internal/dns"
 	"github.com/geodro/lerd/internal/envfile"
 	"github.com/geodro/lerd/internal/nginx"
 	nodeDet "github.com/geodro/lerd/internal/node"
@@ -302,6 +303,22 @@ func toolList() []mcpTool {
 		{
 			Name:        "runtime_versions",
 			Description: "List installed PHP and Node.js versions managed by lerd, plus default versions. Use this to check what runtimes are available before running commands.",
+			InputSchema: mcpSchema{
+				Type:       "object",
+				Properties: map[string]mcpProp{},
+			},
+		},
+		{
+			Name:        "status",
+			Description: "Return the health status of core lerd services: DNS resolution, nginx, PHP-FPM containers, and the file watcher. Use this to diagnose why a site isn't loading or before suggesting start/stop commands.",
+			InputSchema: mcpSchema{
+				Type:       "object",
+				Properties: map[string]mcpProp{},
+			},
+		},
+		{
+			Name:        "doctor",
+			Description: "Run a full lerd environment diagnostic: checks podman, systemd, DNS resolution, port conflicts, PHP images, config validity, and update availability. Use this when the user reports setup issues or unexpected behaviour.",
 			InputSchema: mcpSchema{
 				Type:       "object",
 				Properties: map[string]mcpProp{},
@@ -641,6 +658,10 @@ func handleToolCall(params json.RawMessage) (any, *rpcError) {
 		return execNodeUninstall(args)
 	case "runtime_versions":
 		return execRuntimeVersions()
+	case "status":
+		return execStatus()
+	case "doctor":
+		return execDoctor()
 	case "service_add":
 		return execServiceAdd(args)
 	case "service_remove":
@@ -1313,6 +1334,53 @@ func execRuntimeVersions() (any, *rpcError) {
 		Node: runtimeEntry{Installed: nodeVersions, DefaultVersion: defaultNode},
 	}, "", "  ")
 	return toolOK(string(data)), nil
+}
+
+func execStatus() (any, *rpcError) {
+	cfg, _ := config.LoadGlobal()
+	tld := "test"
+	if cfg != nil && cfg.DNS.TLD != "" {
+		tld = cfg.DNS.TLD
+	}
+
+	type phpStatus struct {
+		Version string `json:"version"`
+		Running bool   `json:"running"`
+	}
+	type result struct {
+		DNS     struct {
+			OK  bool   `json:"ok"`
+			TLD string `json:"tld"`
+		} `json:"dns"`
+		Nginx   struct{ Running bool `json:"running"` } `json:"nginx"`
+		Watcher struct{ Running bool `json:"running"` } `json:"watcher"`
+		PHPFPMs []phpStatus `json:"php_fpms"`
+	}
+
+	var r result
+	r.DNS.TLD = tld
+	r.DNS.OK, _ = dns.Check(tld)
+	r.Nginx.Running, _ = podman.ContainerRunning("lerd-nginx")
+	r.Watcher.Running = exec.Command("systemctl", "--user", "is-active", "--quiet", "lerd-watcher").Run() == nil
+
+	versions, _ := phpDet.ListInstalled()
+	for _, v := range versions {
+		short := strings.ReplaceAll(v, ".", "")
+		running, _ := podman.ContainerRunning("lerd-php" + short + "-fpm")
+		r.PHPFPMs = append(r.PHPFPMs, phpStatus{Version: v, Running: running})
+	}
+
+	data, _ := json.MarshalIndent(r, "", "  ")
+	return toolOK(string(data)), nil
+}
+
+func execDoctor() (any, *rpcError) {
+	cmd := exec.Command("lerd", "doctor")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	cmd.Run() //nolint:errcheck
+	return toolOK(out.String()), nil
 }
 
 func execServiceAdd(args map[string]any) (any, *rpcError) {

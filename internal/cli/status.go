@@ -5,13 +5,17 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/dns"
 	phpPkg "github.com/geodro/lerd/internal/php"
 	"github.com/geodro/lerd/internal/podman"
+	lerdUpdate "github.com/geodro/lerd/internal/update"
+	"github.com/geodro/lerd/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -97,6 +101,15 @@ func runStatus(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Watcher
+	fmt.Println("\n[Watcher]")
+	watcherCmd := exec.Command("systemctl", "--user", "is-active", "--quiet", "lerd-watcher")
+	if watcherCmd.Run() == nil {
+		ok2("lerd-watcher")
+	} else {
+		fail2("lerd-watcher", "not running", "systemctl --user start lerd-watcher")
+	}
+
 	// Services — only show services that have a quadlet file installed
 	fmt.Println("\n[Services]")
 	installedCount := 0
@@ -166,8 +179,29 @@ func runStatus(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Update notice
+	if info, _ := lerdUpdate.CachedUpdateCheck(version.Version); info != nil {
+		printUpdateNotice(info)
+	}
+
 	fmt.Println()
 	return nil
+}
+
+// printUpdateNotice prints a highlighted banner when a new lerd version is available.
+func printUpdateNotice(info *lerdUpdate.UpdateInfo) {
+	bar := "══════════════════════════════════════════════"
+	fmt.Println()
+	fmt.Printf("%s%s%s\n", colorYellow, bar, colorReset)
+	fmt.Printf("%s  Update available: %s  →  run: lerd update%s\n", colorYellow, info.LatestVersion, colorReset)
+	fmt.Printf("%s%s%s\n", colorYellow, bar, colorReset)
+	if info.Changelog != "" {
+		fmt.Println()
+		fmt.Println("  What's new:")
+		for _, line := range strings.Split(info.Changelog, "\n") {
+			fmt.Println("  " + line)
+		}
+	}
 }
 
 // certExpiry reads the expiry date from a PEM certificate file.

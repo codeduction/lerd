@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,6 +54,26 @@ func runUpdate(currentVersion string) error {
 
 	fmt.Printf("  Current: v%s\n", cur)
 	fmt.Printf("  Latest:  v%s\n", lat)
+
+	// Show what's new between the current and latest version.
+	fmt.Println("\n==> What's new")
+	if changelog := lerdUpdate.FetchChangelog(cur, lat); changelog != "" {
+		for _, line := range strings.Split(changelog, "\n") {
+			fmt.Println("  " + line)
+		}
+	} else {
+		fmt.Println("  (could not fetch changelog)")
+	}
+
+	// Ask for confirmation.
+	fmt.Printf("\nUpdate to v%s? [y/N] ", lat)
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		fmt.Println("Update cancelled.")
+		return nil
+	}
 
 	self, err := selfPath()
 	if err != nil {

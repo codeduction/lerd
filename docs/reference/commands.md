@@ -7,7 +7,8 @@
 | `lerd install` | One-time setup: directories, network, binaries, DNS, nginx, watcher |
 | `lerd start` | Start DNS, nginx, PHP-FPM containers, and all installed services |
 | `lerd stop` | Stop DNS, nginx, PHP-FPM containers, and all running services |
-| `lerd update` | Update to the latest release |
+| `lerd quit` | Stop all Lerd processes and containers including the UI, watcher, and tray |
+| `lerd update` | Check for updates, show changelog, and update after confirmation |
 | `lerd uninstall` | Stop all containers and remove Lerd |
 | `lerd uninstall --force` | Same, skipping all confirmation prompts |
 | `lerd autostart enable` | Start Lerd automatically on every login |
@@ -16,7 +17,8 @@
 | `lerd autostart tray enable` | Start the tray applet automatically on graphical login |
 | `lerd autostart tray disable` | Disable tray autostart |
 | `lerd dns:check` | Verify that `*.test` resolves to `127.0.0.1` |
-| `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, services, cert expiry |
+| `lerd status` | Health summary: DNS, nginx, PHP-FPM containers, watcher, services, cert expiry |
+| `lerd doctor` | Full environment diagnostic — podman, systemd, DNS, ports, PHP images, config validity |
 | `lerd logs [-f] [target]` | Show logs for the current project's FPM container, `nginx`, a service name, or a PHP version |
 
 ## Project setup
@@ -66,7 +68,11 @@
 |---|---|
 | `lerd node:install <version>` | Install a Node.js version globally via fnm |
 | `lerd node:uninstall <version>` | Uninstall a Node.js version via fnm |
+| `lerd node:use <version>` | Set the default Node.js version |
 | `lerd isolate:node <version>` | Pin Node version for cwd — writes `.node-version`, runs `fnm install` |
+| `lerd node [args...]` | Run `node` using the project's pinned version via fnm |
+| `lerd npm [args...]` | Run `npm` using the project's pinned Node version via fnm |
+| `lerd npx [args...]` | Run `npx` using the project's pinned Node version via fnm |
 
 ## Services
 
@@ -114,6 +120,19 @@
 |---|---|
 | `lerd stripe:listen` | Start a Stripe webhook listener for the current project as a background service |
 | `lerd stripe:listen stop` | Stop the Stripe webhook listener |
+
+## Artisan & runtime passthrough
+
+| Command | Description |
+|---|---|
+| `lerd artisan [args...]` | Run `php artisan` inside the project's PHP-FPM container |
+
+## AI integration
+
+| Command | Description |
+|---|---|
+| `lerd mcp:inject` | Inject the lerd MCP config and AI skill files into the current project |
+| `lerd mcp:inject --path <dir>` | Inject into a specific project directory |
 
 ## Dashboard
 

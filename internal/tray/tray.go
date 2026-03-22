@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,13 +24,14 @@ const apiBase = "http://127.0.0.1:7073"
 
 // Snapshot holds the state polled from the Lerd API.
 type Snapshot struct {
-	Running      bool
-	NginxRunning bool
-	DNSOK        bool
-	PHPVersions  []phpInfo
-	PHPDefault   string
-	Services     []serviceInfo
+	Running          bool
+	NginxRunning     bool
+	DNSOK            bool
+	PHPVersions      []phpInfo
+	PHPDefault       string
+	Services         []serviceInfo
 	AutostartEnabled bool
+	LatestVersion    string // non-empty (e.g. "v0.8.5") when a newer version is available
 }
 
 type phpInfo struct {
@@ -199,10 +201,25 @@ func fetchSnapshot() *Snapshot {
 
 	snap.AutostartEnabled = lerdSystemd.IsServiceEnabled("lerd-autostart")
 
-	// /api/services
+	// /api/services — only real services (exclude queue/schedule/stripe per-site workers)
 	if r, err := client.Get(apiBase + "/api/services"); err == nil {
-		json.NewDecoder(r.Body).Decode(&snap.Services)
+		var all []serviceInfo
+		if json.NewDecoder(r.Body).Decode(&all) == nil {
+			for _, svc := range all {
+				if strings.HasPrefix(svc.Name, "queue-") ||
+					strings.HasPrefix(svc.Name, "schedule-") ||
+					strings.HasPrefix(svc.Name, "stripe-") {
+					continue
+				}
+				snap.Services = append(snap.Services, svc)
+			}
+		}
 		r.Body.Close()
+	}
+
+	// Update check (uses shared disk cache — fast, no extra network call when cache is fresh)
+	if info, _ := lerdUpdate.CachedUpdateCheck(version.Version); info != nil {
+		snap.LatestVersion = info.LatestVersion
 	}
 
 	return snap
@@ -283,35 +300,17 @@ func handleAutostart(item *systray.MenuItem) {
 }
 
 func handleUpdate(item *systray.MenuItem) {
-	// latestVersion holds the available update version once discovered; empty means up to date.
-	var latestVersion string
-
 	for range item.ClickedCh {
-		if latestVersion != "" {
-			// Update already found — open terminal to run the update.
-			openUpdateTerminal(latestVersion)
-			continue
-		}
-
-		item.SetTitle("⏳ Checking...")
-		item.Disable()
-
-		go func() {
-			defer item.Enable()
-			latest, err := lerdUpdate.FetchLatestVersion()
-			if err != nil {
+		info, _ := lerdUpdate.CachedUpdateCheck(version.Version)
+		if info != nil {
+			openUpdateTerminal(lerdUpdate.StripV(info.LatestVersion))
+		} else {
+			item.SetTitle("✔ Up to date")
+			go func() {
+				time.Sleep(3 * time.Second)
 				item.SetTitle("Check for update...")
-				return
-			}
-			cur := lerdUpdate.StripV(version.Version)
-			lat := lerdUpdate.StripV(latest)
-			if cur == lat {
-				item.SetTitle("✔ Up to date")
-				return
-			}
-			latestVersion = lat
-			item.SetTitle(fmt.Sprintf("⬆ Update to v%s", lat))
-		}()
+			}()
+		}
 	}
 }
 

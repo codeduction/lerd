@@ -2,7 +2,6 @@ package ui
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +26,7 @@ import (
 	phpPkg "github.com/geodro/lerd/internal/php"
 	"github.com/geodro/lerd/internal/podman"
 	lerdSystemd "github.com/geodro/lerd/internal/systemd"
+	lerdUpdate "github.com/geodro/lerd/internal/update"
 )
 
 //go:embed index.html
@@ -109,6 +109,8 @@ func Start(currentVersion string) error {
 	mux.HandleFunc("/api/stripe/", withCORS(handleStripeLogs))
 	mux.HandleFunc("/api/schedule/", withCORS(handleScheduleLogs))
 	mux.HandleFunc("/api/reverb/", withCORS(handleReverbLogs))
+	mux.HandleFunc("/api/watcher/logs", withCORS(handleWatcherLogs))
+	mux.HandleFunc("/api/watcher/start", withCORS(handleWatcherStart))
 	mux.HandleFunc("/api/settings", withCORS(handleSettings))
 	mux.HandleFunc("/api/settings/autostart", withCORS(handleSettingsAutostart))
 	mux.HandleFunc("/api/xdebug/", withCORS(handleXdebugAction))
@@ -189,11 +191,12 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // StatusResponse is the response for GET /api/status.
 type StatusResponse struct {
-	DNS         DNSStatus    `json:"dns"`
-	Nginx       ServiceCheck `json:"nginx"`
-	PHPFPMs     []PHPStatus  `json:"php_fpms"`
-	PHPDefault  string       `json:"php_default"`
-	NodeDefault string       `json:"node_default"`
+	DNS            DNSStatus    `json:"dns"`
+	Nginx          ServiceCheck `json:"nginx"`
+	PHPFPMs        []PHPStatus  `json:"php_fpms"`
+	PHPDefault     string       `json:"php_default"`
+	NodeDefault    string       `json:"node_default"`
+	WatcherRunning bool         `json:"watcher_running"`
 }
 
 type DNSStatus struct {
@@ -220,6 +223,8 @@ func handleStatus(w http.ResponseWriter, _ *http.Request) {
 
 	dnsOK, _ := dns.Check(tld)
 	nginxRunning, _ := podman.ContainerRunning("lerd-nginx")
+	watcherCmd := exec.Command("systemctl", "--user", "is-active", "--quiet", "lerd-watcher")
+	watcherRunning := watcherCmd.Run() == nil
 
 	versions, _ := phpPkg.ListInstalled()
 	var phpStatuses []PHPStatus
@@ -237,11 +242,12 @@ func handleStatus(w http.ResponseWriter, _ *http.Request) {
 		nodeDefault = cfg.Node.DefaultVersion
 	}
 	writeJSON(w, StatusResponse{
-		DNS:         DNSStatus{OK: dnsOK, TLD: tld},
-		Nginx:       ServiceCheck{Running: nginxRunning},
-		PHPFPMs:     phpStatuses,
-		PHPDefault:  phpDefault,
-		NodeDefault: nodeDefault,
+		DNS:            DNSStatus{OK: dnsOK, TLD: tld},
+		Nginx:          ServiceCheck{Running: nginxRunning},
+		PHPFPMs:        phpStatuses,
+		PHPDefault:     phpDefault,
+		NodeDefault:    nodeDefault,
+		WatcherRunning: watcherRunning,
 	})
 }
 
@@ -777,52 +783,21 @@ func serviceRecentLogs(unit string) string {
 
 // VersionResponse is the response for GET /api/version.
 type VersionResponse struct {
-	Current string `json:"current"`
-	Latest  string `json:"latest"`
-	HasUpdate bool `json:"has_update"`
+	Current   string `json:"current"`
+	Latest    string `json:"latest"`
+	HasUpdate bool   `json:"has_update"`
+	Changelog string `json:"changelog,omitempty"`
 }
 
 func handleVersion(w http.ResponseWriter, _ *http.Request, currentVersion string) {
-	latest := fetchLatestRelease()
-	hasUpdate := latest != "" && latest != currentVersion && latest != "v"+currentVersion
-
-	writeJSON(w, VersionResponse{
-		Current:   currentVersion,
-		Latest:    latest,
-		HasUpdate: hasUpdate,
-	})
-}
-
-func fetchLatestRelease() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://api.github.com/repos/geodro/lerd/releases/latest", nil)
-	if err != nil {
-		return ""
+	info, _ := lerdUpdate.CachedUpdateCheck(currentVersion)
+	resp := VersionResponse{Current: currentVersion}
+	if info != nil {
+		resp.Latest = info.LatestVersion
+		resp.HasUpdate = true
+		resp.Changelog = info.Changelog
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "lerd-ui")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ""
-	}
-
-	var payload struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	return payload.TagName
+	writeJSON(w, resp)
 }
 
 
@@ -1433,6 +1408,22 @@ func handleStripeLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	streamUnitLogs(w, r, "lerd-stripe-"+parts[0])
+}
+
+func handleWatcherStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := lerdSystemd.StartService("lerd-watcher"); err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func handleWatcherLogs(w http.ResponseWriter, r *http.Request) {
+	streamUnitLogs(w, r, "lerd-watcher")
 }
 
 func streamUnitLogs(w http.ResponseWriter, r *http.Request, unit string) {

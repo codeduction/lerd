@@ -34,7 +34,10 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 		entries, _ := os.ReadDir(expanded)
 		for _, e := range entries {
 			if e.IsDir() {
-				_ = w.Add(filepath.Join(expanded, e.Name()))
+				sub := filepath.Join(expanded, e.Name())
+				if err := w.Add(sub); err != nil {
+					logger.Error("failed to watch subdirectory", "path", sub, "err", err)
+				}
 			}
 		}
 	}
@@ -59,7 +62,11 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 					// New direct subdirectory in a parked dir — watch it for artisan.
 					if parkedDirs[filepath.Dir(event.Name)] {
 						if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-							_ = w.Add(event.Name)
+							if err := w.Add(event.Name); err != nil {
+								logger.Error("failed to watch new subdirectory", "path", event.Name, "err", err)
+							} else {
+								logger.Debug("watching new subdirectory", "path", event.Name)
+							}
 						}
 					}
 				}
@@ -68,7 +75,7 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 			if !ok {
 				return nil
 			}
-			_ = err // log if needed
+			logger.Error("fsnotify error", "err", err)
 		}
 	}
 }

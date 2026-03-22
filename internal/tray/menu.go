@@ -155,4 +155,11 @@ func (m *menuState) apply(snap *Snapshot) {
 	} else {
 		m.mAutostart.SetTitle("Autostart at login: Off")
 	}
+
+	// Update availability
+	if snap.LatestVersion != "" {
+		m.mUpdate.SetTitle(fmt.Sprintf("⬆ Update to %s", snap.LatestVersion))
+	} else {
+		m.mUpdate.SetTitle("Check for update...")
+	}
 }

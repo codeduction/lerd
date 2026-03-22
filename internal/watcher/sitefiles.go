@@ -40,9 +40,11 @@ func WatchSiteFiles(getSites func() []string, debounce time.Duration, onChanged 
 			return
 		}
 		if err := w.Add(sitePath); err != nil {
+			logger.Error("failed to watch site directory", "path", sitePath, "err", err)
 			return
 		}
 		watched[sitePath] = true
+		logger.Debug("watching site directory", "path", sitePath)
 		for name := range watchedSiteFiles {
 			fileToSite[filepath.Join(sitePath, name)] = sitePath
 		}
@@ -87,10 +89,11 @@ func WatchSiteFiles(getSites func() []string, debounce time.Duration, onChanged 
 			}
 			mu.Unlock()
 
-		case _, ok := <-w.Errors:
+		case err, ok := <-w.Errors:
 			if !ok {
 				return nil
 			}
+			logger.Error("fsnotify error", "err", err)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,7 @@ func main() {
 	root.AddCommand(cli.NewNpxCmd())
 	root.AddCommand(cli.NewServiceCmd())
 	root.AddCommand(cli.NewStatusCmd())
+	root.AddCommand(cli.NewDoctorCmd())
 	root.AddCommand(cli.NewLogsCmd())
 	root.AddCommand(cli.NewOpenCmd())
 	root.AddCommand(cli.NewDashboardCmd())
@@ -140,6 +142,12 @@ func newWatchCmd() *cobra.Command {
 		Short:  "Watch parked directories for new projects (daemon)",
 		Hidden: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if os.Getenv("LERD_DEBUG") != "" {
+				watcher.SetLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+					Level: slog.LevelDebug,
+				})))
+			}
+
 			cfg, err := config.LoadGlobal()
 			if err != nil {
 				return err

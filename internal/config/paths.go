@@ -100,3 +100,8 @@ func PHPUserIniFile(version string) string {
 func CustomServicesDir() string {
 	return filepath.Join(ConfigDir(), "services")
 }
+
+// UpdateCheckFile returns the path to the cached update-check state file.
+func UpdateCheckFile() string {
+	return filepath.Join(DataDir(), "update-check.json")
+}

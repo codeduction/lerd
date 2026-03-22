@@ -30,11 +30,15 @@ Stop Lerd            ← toggles between Start / Stop Lerd
   8.3
 ─────────────────
 Autostart at login: ✔ On   ← click to toggle
-Check for update...
+⬆ Update to v0.8.3         ← shown when an update is cached; click to open terminal
 Stop Lerd & Quit     ← runs lerd stop then exits the tray
 ```
 
 The menu refreshes every 5 seconds. Clicking a service toggles it on/off. Clicking a PHP version sets it as the global default. "Stop Lerd & Quit" stops the entire environment before closing.
+
+The **Services** section shows only core services (MySQL, Redis, PostgreSQL, etc.). Per-site workers (queue, schedule, Stripe, Reverb) are managed from the web UI or via their respective CLI commands and are not listed in the tray.
+
+The **update item** shows "Check for update..." when no update information is cached, and "⬆ Update to vX.Y.Z" once the background checker finds a newer release. Clicking it opens a terminal to run `lerd update`.
 
 ---
 

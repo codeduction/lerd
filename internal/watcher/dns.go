@@ -1,7 +1,6 @@
 package watcher
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/geodro/lerd/internal/dns"
@@ -20,17 +19,17 @@ func WatchDNS(interval time.Duration, tld string) {
 			continue
 		}
 
-		fmt.Println("[DNS watcher] .test resolution broken — repairing...")
+		logger.Warn("DNS resolution broken, repairing", "tld", tld)
 
 		if err := dns.WaitReady(10 * time.Second); err != nil {
-			fmt.Printf("[DNS watcher] lerd-dns not ready: %v\n", err)
+			logger.Error("lerd-dns not ready", "err", err)
 			continue
 		}
 
 		if err := dns.ConfigureResolver(); err != nil {
-			fmt.Printf("[DNS watcher] repair failed: %v\n", err)
+			logger.Error("DNS repair failed", "err", err)
 		} else {
-			fmt.Println("[DNS watcher] .test resolution restored")
+			logger.Info("DNS resolution restored", "tld", tld)
 		}
 	}
 }

@@ -369,6 +369,12 @@ Fetch recent container logs. ` + bt + `target` + bt + ` is optional — when omi
 
 Optional ` + bt + `lines` + bt + ` parameter (default: 50).
 
+### ` + bt + `status` + bt + `
+Return the health status of core lerd services as structured JSON: DNS resolution (ok + tld), nginx (running), PHP-FPM containers (running per version), and the file watcher (running). **Call this first when a site isn't loading** — it pinpoints which service is down before suggesting fixes.
+
+### ` + bt + `doctor` + bt + `
+Run a full environment diagnostic. Checks podman availability, systemd user session, linger, quadlet/data dir writability, config validity, DNS resolution, port 80/443 conflicts, PHP image presence, and available updates. Returns a text report with OK/FAIL/WARN per check and hints for each failure. **Use this when the user reports setup issues or unexpected behaviour.**
+
 ## Common Workflows
 
 **Check installed runtimes before starting:**
@@ -442,6 +448,16 @@ logs()                  // current site's PHP-FPM errors (no target needed)
 logs(target: "nginx")   // nginx errors
 ` + "```" + `
 
+**Site isn't loading — check service health first:**
+` + "```" + `
+status()    // see which of DNS / nginx / PHP-FPM / watcher is down
+` + "```" + `
+
+**User reports setup issues or something unexpected:**
+` + "```" + `
+doctor()    // full diagnostic: podman, systemd, DNS, ports, images, config
+` + "```" + `
+
 **Work with failed queue jobs:**
 ` + "```" + `
 artisan(args: ["queue:failed"])
@@ -504,6 +520,8 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 | ` + bt + `stripe_listen` + bt + ` | Start a Stripe webhook listener for a site |
 | ` + bt + `stripe_listen_stop` + bt + ` | Stop the Stripe webhook listener |
 | ` + bt + `logs` + bt + ` | Fetch container logs — defaults to current site's FPM; optionally specify nginx, service name, PHP version, or site name |
+| ` + bt + `status` + bt + ` | Health snapshot of DNS, nginx, PHP-FPM containers, and the file watcher — call first when a site isn't loading |
+| ` + bt + `doctor` + bt + ` | Full diagnostic: podman, systemd, DNS, ports, PHP images, config, updates — use when the user reports setup issues |
 
 ### Key conventions
 

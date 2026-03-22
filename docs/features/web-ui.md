@@ -34,11 +34,15 @@ Lists all registered projects with their domain, path, PHP version, Node version
 
 Shows all available services (MySQL, Redis, PostgreSQL, Meilisearch, MinIO, Mailpit) with their current status. Start or stop any service with one click; each panel shows the correct `.env` connection values with a one-click copy button.
 
+Queue workers, schedule workers, Stripe listeners, and Reverb servers are grouped into collapsible accordions (Queues, Schedules, Stripe, Reverb). Click a group header to expand it and see the individual per-site entries; only one group is open at a time.
+
 ## System tab
 
-Health check panel for DNS, nginx, PHP-FPM containers, installed Node.js versions, and the autostart toggle.
+Health check panel for DNS, nginx, PHP-FPM containers, the file watcher, installed Node.js versions, and the autostart toggle.
 
 The **Node.js card** lists all versions installed via fnm and includes an inline install form — enter a version number (e.g. `22`) and click **Install**. This is equivalent to running `lerd node:install <version>` from the terminal.
+
+The **Watcher card** shows whether `lerd-watcher` is running. When stopped, a **Start** button appears to restart it from the UI without opening a terminal. The card also streams live watcher logs (DNS repair events, fsnotify errors, worktree timeouts) directly in the browser.
 
 ## Updates
 

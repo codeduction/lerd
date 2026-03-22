@@ -7,6 +7,30 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.9.0] — 2026-03-22
+
+### Added
+
+- **`lerd doctor` command** — full environment diagnostic. Checks podman, systemd user session, linger, quadlet/data dir writability, config validity, DNS resolution, port 80/443/5300 conflicts, PHP-FPM image presence, and update availability. Reports OK/FAIL/WARN per check with a hint for every failure and a summary line at the end.
+- **`lerd status` shows watcher and update notice** — `lerd-watcher` is now included in the status output alongside DNS, nginx, and PHP-FPM. A highlighted banner is printed when a newer version is cached.
+- **Background update checker** — checks GitHub for a new release once per 24 hours; result is cached to `~/.local/share/lerd/update-check.json`. Fetches relevant CHANGELOG sections between the current and latest version. Used by `lerd status`, `lerd doctor`, the web UI, and the system tray.
+- **MCP `status` tool** — returns structured JSON with DNS (ok + tld), nginx (running), PHP-FPM per version (running), and watcher (running). Recommended first call when a site isn't loading.
+- **MCP `doctor` tool** — runs the full `lerd doctor` diagnostic and returns the text report. Use when the user reports setup issues or unexpected behaviour.
+- **Watcher structured logging** — the watcher package now uses `slog` throughout. Set `LERD_DEBUG=1` in the environment to enable debug-level output at runtime; watcher is otherwise silent except for WARN/ERROR events.
+- **Web UI: Watcher card** — the System tab now shows whether `lerd-watcher` is running. When stopped, a **Start** button appears to restart it without opening a terminal. The card also streams live watcher logs (DNS repair events, fsnotify errors, worktree timeouts) directly in the browser.
+- **Web UI: grouped worker accordions** — queue workers, schedule workers, Stripe listeners, and Reverb servers are now grouped into collapsible accordions on the Services tab. Click a group header to expand it; only one group is open at a time. Mobile pill navigation is split into core services + group toggle pills with expandable sub-rows.
+- **Tray: update badge** — the "Check for update..." menu item shows "⬆ Update to vX.Y.Z" when a new version is cached. Per-site workers (queue, schedule, Stripe, Reverb) are no longer listed in the tray services section.
+
+### Changed
+
+- **`lerd update` shows changelog and asks for confirmation** — before downloading anything, `lerd update` now fetches and prints the CHANGELOG sections for every version between the current and latest release, then prompts `Update to vX.Y.Z? [y/N]`. The update only proceeds on an explicit `y`/`yes`; pressing Enter or anything else cancels.
+
+### Fixed
+
+- **`lerd start` now starts `lerd-watcher`** — the watcher service was missing from the start sequence and could only be stopped by `lerd quit`, never started. `lerd start` now includes it alongside `lerd-ui`.
+
+---
+
 ## [0.8.2] — 2026-03-21
 
 ### Fixed
