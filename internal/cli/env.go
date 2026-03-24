@@ -216,6 +216,24 @@ func runEnv(_ *cobra.Command, _ []string) error {
 				continue
 			}
 
+			if svc == "minio" {
+				updates["AWS_BUCKET"] = dbName
+				updates["AWS_URL"] = "http://localhost:9000/" + dbName
+				if err := ensureServiceRunning(svc); err != nil {
+					fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+				} else {
+					created, err := createMinioBucket(dbName)
+					if err != nil {
+						fmt.Printf("  [WARN] could not create bucket %q: %v\n", dbName, err)
+					} else if created {
+						fmt.Printf("  Created bucket %q\n", dbName)
+					} else {
+						fmt.Printf("  Bucket %q already exists\n", dbName)
+					}
+				}
+				continue
+			}
+
 			if err := ensureServiceRunning(svc); err != nil {
 				fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
 			}
@@ -252,7 +270,7 @@ func runEnv(_ *cobra.Command, _ []string) error {
 	// 3c. Generate REVERB_ env vars if BROADCAST_CONNECTION=reverb (Laravel only)
 	if isLaravel && strings.ToLower(strings.Trim(envMap["BROADCAST_CONNECTION"], `"'`)) == "reverb" {
 		fmt.Println("  Detected reverb     — configuring REVERB_ connection values")
-		for k, v := range reverbEnvUpdates(envMap) {
+		for k, v := range reverbEnvUpdates(envMap, site.Domain, site.Secured) {
 			updates[k] = v
 		}
 	}
@@ -337,6 +355,33 @@ func createDatabase(svc, name string) (bool, error) {
 	default:
 		return false, nil
 	}
+}
+
+// createMinioBucket creates a MinIO bucket for the given name in lerd-minio.
+// Returns (true, nil) if created, (false, nil) if it already existed, or (false, err) on failure.
+func createMinioBucket(name string) (bool, error) {
+	const alias = "lerd"
+	aliasCmd := exec.Command("podman", "exec", "lerd-minio",
+		"mc", "alias", "set", alias, "http://localhost:9000", "lerd", "lerdpassword")
+	if out, err := aliasCmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("mc alias set: %s", strings.TrimSpace(string(out)))
+	}
+
+	lsCmd := exec.Command("podman", "exec", "lerd-minio", "mc", "ls", alias+"/"+name)
+	if err := lsCmd.Run(); err == nil {
+		return false, nil
+	}
+
+	mbCmd := exec.Command("podman", "exec", "lerd-minio", "mc", "mb", alias+"/"+name)
+	if out, err := mbCmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+
+	pubCmd := exec.Command("podman", "exec", "lerd-minio", "mc", "anonymous", "set", "public", alias+"/"+name)
+	if out, err := pubCmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("mc anonymous set public: %s", strings.TrimSpace(string(out)))
+	}
+	return true, nil
 }
 
 // ensureServiceRunning starts the service if it is not already active.
@@ -455,12 +500,16 @@ func copyEnvFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0644)
 }
 
-// reverbEnvUpdates returns REVERB_ env key→value pairs for any keys missing or empty in envMap.
-func reverbEnvUpdates(envMap map[string]string) map[string]string {
+// reverbEnvUpdates returns REVERB_ and VITE_REVERB_ env key→value pairs.
+// Random secrets (APP_ID, APP_KEY, APP_SECRET) are only generated when missing.
+// Connection values (HOST, PORT, SCHEME) are always set from the site's domain and TLS state
+// so that Vite and the browser can reach Reverb via the nginx WebSocket proxy.
+func reverbEnvUpdates(envMap map[string]string, domain string, secured bool) map[string]string {
 	updates := map[string]string{}
 	missing := func(key string) bool {
 		return strings.TrimSpace(envMap[key]) == ""
 	}
+
 	if missing("REVERB_APP_ID") {
 		updates["REVERB_APP_ID"] = randNumeric(6)
 	}
@@ -470,15 +519,29 @@ func reverbEnvUpdates(envMap map[string]string) map[string]string {
 	if missing("REVERB_APP_SECRET") {
 		updates["REVERB_APP_SECRET"] = randAlphanumeric(20)
 	}
-	if missing("REVERB_HOST") {
-		updates["REVERB_HOST"] = "localhost"
+
+	// Connection values are derived from the site — always update so they stay in sync
+	// with the site's domain and TLS state.
+	scheme := "http"
+	port := "80"
+	if secured {
+		scheme = "https"
+		port = "443"
 	}
-	if missing("REVERB_PORT") {
-		updates["REVERB_PORT"] = "8080"
+	updates["REVERB_HOST"] = domain
+	updates["REVERB_PORT"] = port
+	updates["REVERB_SCHEME"] = scheme
+
+	// VITE_ vars mirror the connection values so the browser can connect via nginx.
+	appKey := envMap["REVERB_APP_KEY"]
+	if v, ok := updates["REVERB_APP_KEY"]; ok {
+		appKey = v
 	}
-	if missing("REVERB_SCHEME") {
-		updates["REVERB_SCHEME"] = "http"
-	}
+	updates["VITE_REVERB_APP_KEY"] = appKey
+	updates["VITE_REVERB_HOST"] = domain
+	updates["VITE_REVERB_PORT"] = port
+	updates["VITE_REVERB_SCHEME"] = scheme
+
 	return updates
 }
 

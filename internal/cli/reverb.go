@@ -8,6 +8,7 @@ import (
 
 	"github.com/geodro/lerd/internal/config"
 	"github.com/geodro/lerd/internal/envfile"
+	"github.com/geodro/lerd/internal/nginx"
 	phpDet "github.com/geodro/lerd/internal/php"
 	lerdSystemd "github.com/geodro/lerd/internal/systemd"
 	"github.com/geodro/lerd/internal/podman"
@@ -117,6 +118,23 @@ WantedBy=default.target
 	}
 	fmt.Printf("Reverb started for %s\n", siteName)
 	fmt.Printf("  Logs: journalctl --user -u %s -f\n", unitName)
+
+	// Regenerate the nginx vhost so the /app WebSocket proxy block is added.
+	if site, err := config.FindSite(siteName); err == nil {
+		phpVer := site.PHPVersion
+		if detected, detErr := phpDet.DetectVersion(sitePath); detErr == nil && detected != "" {
+			phpVer = detected
+		}
+		var vhostErr error
+		if site.Secured {
+			vhostErr = nginx.GenerateSSLVhost(*site, phpVer)
+		} else {
+			vhostErr = nginx.GenerateVhost(*site, phpVer)
+		}
+		if vhostErr == nil {
+			_ = nginx.Reload()
+		}
+	}
 	return nil
 }
 

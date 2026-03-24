@@ -12,6 +12,32 @@ import (
 	"github.com/geodro/lerd/internal/podman"
 )
 
+// detectSiteReverb returns true when the project at sitePath uses Laravel Reverb —
+// either as a composer dependency or with BROADCAST_CONNECTION=reverb in .env/.env.example.
+func detectSiteReverb(sitePath string) bool {
+	if data, err := os.ReadFile(filepath.Join(sitePath, "composer.json")); err == nil {
+		if strings.Contains(string(data), `"laravel/reverb"`) {
+			return true
+		}
+	}
+	for _, name := range []string{".env", ".env.example"} {
+		if data, err := os.ReadFile(filepath.Join(sitePath, name)); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "#") {
+					continue
+				}
+				if strings.EqualFold(line, "BROADCAST_CONNECTION=reverb") ||
+					strings.EqualFold(line, `BROADCAST_CONNECTION="reverb"`) ||
+					strings.EqualFold(line, `BROADCAST_CONNECTION='reverb'`) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 type nginxConfData struct {
 	Resolver string
 }
@@ -24,6 +50,7 @@ type VhostData struct {
 	PHPVersionShort string
 	CertDomain      string // domain whose cert files to use (defaults to Domain)
 	PublicDir       string // document root subdirectory, e.g. "public", "web", "."
+	Reverb          bool   // true when the site uses Laravel Reverb (adds /app WebSocket proxy)
 }
 
 // phpShort converts "8.4" → "84".
@@ -64,6 +91,7 @@ func GenerateVhost(site config.Site, phpVersion string) error {
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
 		PublicDir:       publicDir,
+		Reverb:          detectSiteReverb(site.Path),
 	}
 
 	var buf bytes.Buffer
@@ -99,6 +127,7 @@ func GenerateSSLVhost(site config.Site, phpVersion string) error {
 		PHPVersionShort: phpShort(phpVersion),
 		CertDomain:      site.Domain,
 		PublicDir:       publicDir,
+		Reverb:          detectSiteReverb(site.Path),
 	}
 
 	var buf bytes.Buffer

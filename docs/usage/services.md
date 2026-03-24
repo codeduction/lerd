@@ -30,13 +30,34 @@ Available services: `mysql`, `redis`, `postgres`, `meilisearch`, `minio`, `mailp
 | PostgreSQL | 127.0.0.1 | lerd-postgres | 5432 | postgres | `lerd` | `lerd` |
 | Redis | 127.0.0.1 | lerd-redis | 6379 | — | — | — |
 | Meilisearch | 127.0.0.1 | lerd-meilisearch | 7700 | — | — | — |
-| MinIO | 127.0.0.1 | lerd-minio | 9000 | `lerd` | `lerdpassword` | — |
+| MinIO | 127.0.0.1 | lerd-minio | 9000 | `lerd` | `lerdpassword` | per-site bucket |
 | Mailpit SMTP | 127.0.0.1 | lerd-mailpit | 1025 | — | — | — |
 
 Additional UIs:
 
 - MinIO console: `http://127.0.0.1:9001`
 - Mailpit web UI: `http://127.0.0.1:8025`
+
+### MinIO — per-site buckets
+
+When `lerd env` detects MinIO (via `FILESYSTEM_DISK=s3` or `AWS_ENDPOINT` in `.env`), it automatically:
+
+1. Creates a bucket named after the site handle (e.g. `my_project`)
+2. Sets the bucket to **public access** (suitable for local development)
+3. Writes the correct `.env` values:
+
+```ini
+FILESYSTEM_DISK=s3
+AWS_ACCESS_KEY_ID=lerd
+AWS_SECRET_ACCESS_KEY=lerdpassword
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=my_project
+AWS_URL=http://localhost:9000/my_project
+AWS_ENDPOINT=http://lerd-minio:9000
+AWS_USE_PATH_STYLE_ENDPOINT=true
+```
+
+`AWS_URL` points to the public bucket URL (browser-reachable). `AWS_ENDPOINT` is the internal container address used by PHP.
 
 ---
 
