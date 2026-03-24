@@ -87,6 +87,7 @@ nav:
       - Node: usage/node.md
       - Services: usage/services.md
       - Database: usage/database.md
+      - Frameworks & Workers: usage/frameworks.md
       - Queue Workers: usage/queue-workers.md
   - Features:
       - Web UI: features/web-ui.md

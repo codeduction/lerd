@@ -39,6 +39,9 @@ func newScheduleStartCmd(use string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := requireFrameworkWorker(cwd, "schedule"); err != nil {
+				return err
+			}
 			siteName, err := queueSiteName(cwd)
 			if err != nil {
 				return err
@@ -60,6 +63,9 @@ func newScheduleStopCmd(use string) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
+				return err
+			}
+			if err := requireFrameworkWorker(cwd, "schedule"); err != nil {
 				return err
 			}
 			siteName, err := queueSiteName(cwd)

@@ -1,15 +1,40 @@
-# Queue Workers
+# Queue Workers & Framework Workers
 
-Lerd can run Laravel queue workers as persistent systemd user services. The worker runs `php artisan queue:work` inside the project's PHP-FPM container and restarts automatically on failure.
+Lerd can run framework-defined workers as persistent systemd user services. Workers run inside the project's PHP-FPM container and restart automatically on failure.
 
-## Commands
+## Queue worker
 
 | Command | Description |
 |---|---|
-| `lerd queue:start` | Start a queue worker for the current project |
+| `lerd queue:start` | Start the queue worker for the current project |
 | `lerd queue:stop` | Stop the queue worker for the current project |
 | `lerd queue start` | Same as `queue:start` (subcommand form) |
 | `lerd queue stop` | Same as `queue:stop` (subcommand form) |
+
+Works for any framework that defines a `queue` worker. Laravel has it built-in (`php artisan queue:work`).
+
+## Generic workers (`lerd worker`)
+
+Use this for any other framework-defined worker:
+
+| Command | Description |
+|---|---|
+| `lerd worker start <name>` | Start a named worker for the current project |
+| `lerd worker stop <name>` | Stop a named worker |
+| `lerd worker list` | List all workers defined for this project's framework |
+
+Example — start the Symfony Messenger consumer:
+```bash
+lerd worker start messenger
+# Systemd unit: lerd-messenger-myapp.service
+# Logs: journalctl --user -u lerd-messenger-myapp -f
+```
+
+Workers are defined in framework YAML definitions at `~/.config/lerd/frameworks/`. To add a custom worker to Laravel (e.g. Horizon):
+```bash
+lerd framework add laravel --from-file horizon.yaml
+# or via the UI toggle in the Sites panel
+```
 
 ---
 

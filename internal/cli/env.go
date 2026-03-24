@@ -82,72 +82,143 @@ func runEnv(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	envPath := filepath.Join(cwd, ".env")
-	examplePath := filepath.Join(cwd, ".env.example")
-
-	// 1. Create .env from .env.example if it doesn't exist
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		if _, err := os.Stat(examplePath); os.IsNotExist(err) {
-			return fmt.Errorf("no .env or .env.example found in %s", cwd)
-		}
-		fmt.Println("Creating .env from .env.example...")
-		if err := copyEnvFile(examplePath, envPath); err != nil {
-			return fmt.Errorf("copying .env.example: %w", err)
-		}
-	} else {
-		fmt.Println("Updating existing .env...")
+	// Determine framework-specific env file path and format
+	site, _ := config.FindSiteByPath(cwd)
+	if site == nil {
+		return fmt.Errorf("no site registered for this directory\nRun 'lerd link' first")
 	}
 
-	// 2. Parse the .env into a key→value map (for detection)
-	envMap, err := parseEnvMap(envPath)
+	fwName := site.Framework
+	if fwName == "" {
+		fwName, _ = config.DetectFramework(cwd)
+	}
+	if fwName == "" {
+		return fmt.Errorf("no framework detected for this site\nDefine one with 'lerd framework add' or add a framework YAML to %s", config.FrameworksDir())
+	}
+
+	fw, ok := config.GetFramework(fwName)
+	if !ok {
+		return fmt.Errorf("framework %q is not defined\nDefine it with 'lerd framework add'", fwName)
+	}
+
+	if fw.Env.File == "" && fw.Env.Format == "" && len(fw.Env.Services) == 0 {
+		return fmt.Errorf("'lerd env' is not supported for %s\nConfigure the env section in the framework YAML to enable it", fw.Label)
+	}
+
+	isLaravel := fwName == "laravel"
+
+	envRelPath, envFormat := fw.Env.Resolve(cwd)
+	envPath := filepath.Join(cwd, envRelPath)
+
+	exampleRelPath := fw.Env.ExampleFile
+	if exampleRelPath == "" {
+		exampleRelPath = ".env.example"
+	}
+	examplePath := filepath.Join(cwd, exampleRelPath)
+
+	// 1. Create env file from example if it doesn't exist
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		if _, err := os.Stat(examplePath); os.IsNotExist(err) {
+			return fmt.Errorf("no %s or %s found in %s", envRelPath, exampleRelPath, cwd)
+		}
+		fmt.Printf("Creating %s from %s...\n", envRelPath, exampleRelPath)
+		if err := copyEnvFile(examplePath, envPath); err != nil {
+			return fmt.Errorf("copying %s: %w", exampleRelPath, err)
+		}
+	} else {
+		fmt.Printf("Updating existing %s...\n", envRelPath)
+	}
+
+	// 2. Parse the env file into a key→value map (for detection)
+	var envMap map[string]string
+	switch envFormat {
+	case "php-const":
+		envMap, err = envfile.ReadPhpConst(envPath)
+	default:
+		envMap, err = parseEnvMap(envPath)
+	}
 	if err != nil {
-		return fmt.Errorf("reading .env: %w", err)
+		return fmt.Errorf("reading %s: %w", envRelPath, err)
 	}
 
 	// 3. Detect services and build the set of key→value updates to apply
 	updates := map[string]string{}
 	dbName := projectDBName(cwd)
 
-	for _, svc := range knownServices {
-		detector, ok := serviceDetectors[svc]
-		if !ok || !detector(envMap) {
-			continue
-		}
-
-		info, ok := serviceEnvVars[svc]
-		if !ok {
-			continue
-		}
-
-		fmt.Printf("  Detected %-12s — applying lerd connection values\n", svc)
-		for _, kv := range info.envVars {
-			k, v, _ := strings.Cut(kv, "=")
-			updates[k] = v
-		}
-
-		// Use a per-project database instead of the shared "lerd" default.
-		if svc == "mysql" || svc == "postgres" {
-			updates["DB_DATABASE"] = dbName
-			if err := ensureServiceRunning(svc); err != nil {
-				fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
-			} else {
-				for _, name := range []string{dbName, dbName + "_testing"} {
-					created, err := createDatabase(svc, name)
-					if err != nil {
-						fmt.Printf("  [WARN] could not create database %q: %v\n", name, err)
-					} else if created {
-						fmt.Printf("  Created database %q\n", name)
-					} else {
-						fmt.Printf("  Database %q already exists\n", name)
+	if len(fw.Env.Services) > 0 {
+		// Framework defines its own service detection and vars — use those.
+		for svc, def := range fw.Env.Services {
+			if !frameworkServiceDetected(def, envMap) {
+				continue
+			}
+			fmt.Printf("  Detected %-12s — applying lerd connection values\n", svc)
+			isDB := svc == "mysql" || svc == "postgres"
+			for _, kv := range def.Vars {
+				k, v, _ := strings.Cut(kv, "=")
+				updates[k] = applySiteHandle(v, dbName)
+			}
+			if isDB {
+				if err := ensureServiceRunning(svc); err != nil {
+					fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+				} else {
+					for _, name := range []string{dbName, dbName + "_testing"} {
+						created, err := createDatabase(svc, name)
+						if err != nil {
+							fmt.Printf("  [WARN] could not create database %q: %v\n", name, err)
+						} else if created {
+							fmt.Printf("  Created database %q\n", name)
+						} else {
+							fmt.Printf("  Database %q already exists\n", name)
+						}
 					}
 				}
+				continue
 			}
-			continue
+			if err := ensureServiceRunning(svc); err != nil {
+				fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+			}
 		}
+	} else {
+		// Default Laravel-style detection.
+		for _, svc := range knownServices {
+			detector, ok := serviceDetectors[svc]
+			if !ok || !detector(envMap) {
+				continue
+			}
 
-		// Ensure the service is running
-		if err := ensureServiceRunning(svc); err != nil {
-			fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+			info, ok := serviceEnvVars[svc]
+			if !ok {
+				continue
+			}
+
+			fmt.Printf("  Detected %-12s — applying lerd connection values\n", svc)
+			for _, kv := range info.envVars {
+				k, v, _ := strings.Cut(kv, "=")
+				updates[k] = v
+			}
+
+			if svc == "mysql" || svc == "postgres" {
+				updates["DB_DATABASE"] = dbName
+				if err := ensureServiceRunning(svc); err != nil {
+					fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+				} else {
+					for _, name := range []string{dbName, dbName + "_testing"} {
+						created, err := createDatabase(svc, name)
+						if err != nil {
+							fmt.Printf("  [WARN] could not create database %q: %v\n", name, err)
+						} else if created {
+							fmt.Printf("  Created database %q\n", name)
+						} else {
+							fmt.Printf("  Database %q already exists\n", name)
+						}
+					}
+				}
+				continue
+			}
+
+			if err := ensureServiceRunning(svc); err != nil {
+				fmt.Printf("  [WARN] could not start %s: %v\n", svc, err)
+			}
 		}
 	}
 
@@ -178,29 +249,40 @@ func runEnv(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// 3c. Generate REVERB_ env vars if BROADCAST_CONNECTION=reverb
-	if strings.ToLower(strings.Trim(envMap["BROADCAST_CONNECTION"], `"'`)) == "reverb" {
+	// 3c. Generate REVERB_ env vars if BROADCAST_CONNECTION=reverb (Laravel only)
+	if isLaravel && strings.ToLower(strings.Trim(envMap["BROADCAST_CONNECTION"], `"'`)) == "reverb" {
 		fmt.Println("  Detected reverb     — configuring REVERB_ connection values")
 		for k, v := range reverbEnvUpdates(envMap) {
 			updates[k] = v
 		}
 	}
 
-	// 4. Set APP_URL to the registered .test domain
+	// 4. Set the URL key to the registered .test domain
+	urlKey := fw.Env.URLKey
+	if urlKey == "" {
+		urlKey = "APP_URL"
+	}
 	if url := siteURL(cwd); url != "" {
-		updates["APP_URL"] = url
-		fmt.Printf("  Setting APP_URL=%s\n", url)
+		updates[urlKey] = url
+		fmt.Printf("  Setting %s=%s\n", urlKey, url)
 	}
 
-	// 5. Rewrite the .env preserving order, comments, and blank lines
+	// 5. Rewrite the env file preserving order, comments, and blank lines
 	if len(updates) > 0 {
-		if err := envfile.ApplyUpdates(envPath, updates); err != nil {
-			return fmt.Errorf("writing .env: %w", err)
+		var writeErr error
+		switch envFormat {
+		case "php-const":
+			writeErr = envfile.ApplyPhpConstUpdates(envPath, updates)
+		default:
+			writeErr = envfile.ApplyUpdates(envPath, updates)
+		}
+		if writeErr != nil {
+			return fmt.Errorf("writing %s: %w", envRelPath, writeErr)
 		}
 	}
 
-	// 6. Generate APP_KEY if missing or empty
-	if strings.TrimSpace(envMap["APP_KEY"]) == "" {
+	// 6. Generate APP_KEY if missing or empty (Laravel only)
+	if isLaravel && strings.TrimSpace(envMap["APP_KEY"]) == "" {
 		fmt.Println("  Generating APP_KEY...")
 		if err := artisanIn(cwd, "key:generate"); err != nil {
 			fmt.Printf("  [WARN] key:generate failed: %v\n", err)
@@ -209,6 +291,20 @@ func runEnv(_ *cobra.Command, _ []string) error {
 
 	fmt.Println("Done.")
 	return nil
+}
+
+// frameworkServiceDetected returns true if any detect rule in def matches the env map.
+func frameworkServiceDetected(def config.FrameworkServiceDef, envMap map[string]string) bool {
+	for _, rule := range def.Detect {
+		val, exists := envMap[rule.Key]
+		if !exists {
+			continue
+		}
+		if rule.ValuePrefix == "" || strings.HasPrefix(val, rule.ValuePrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // createDatabase creates a database with the given name in the mysql or postgres container.

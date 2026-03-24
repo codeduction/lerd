@@ -29,14 +29,15 @@ func runSites(_ *cobra.Command, _ []string) error {
 	}
 
 	// Print header
-	fmt.Printf("%-25s %-35s %-8s %-8s %-5s %s\n",
-		"Name", "Domain", "PHP", "Node", "TLS", "Path")
-	fmt.Printf("%-25s %-35s %-8s %-8s %-5s %s\n",
+	fmt.Printf("%-25s %-35s %-8s %-8s %-5s %-10s %s\n",
+		"Name", "Domain", "PHP", "Node", "TLS", "Framework", "Path")
+	fmt.Printf("%-25s %-35s %-8s %-8s %-5s %-10s %s\n",
 		"─────────────────────────",
 		"───────────────────────────────────",
 		"────────",
 		"────────",
 		"─────",
+		"──────────",
 		"──────────────────────────────",
 	)
 
@@ -45,23 +46,33 @@ func runSites(_ *cobra.Command, _ []string) error {
 		if s.Secured {
 			tls = "Yes"
 		}
-		fmt.Printf("%-25s %-35s %-8s %-8s %-5s %s\n",
+		fwName := s.Framework
+		if fwName == "" {
+			fwName, _ = config.DetectFramework(s.Path)
+		}
+		fwLabel := ""
+		if fw, ok := config.GetFramework(fwName); ok {
+			fwLabel = fw.Label
+		}
+		fmt.Printf("%-25s %-35s %-8s %-8s %-5s %-10s %s\n",
 			truncate(s.Name, 25),
 			truncate(s.Domain, 35),
 			s.PHPVersion,
 			s.NodeVersion,
 			tls,
+			fwLabel,
 			s.Path,
 		)
 		if gitpkg.IsMainRepo(s.Path) {
 			worktrees, _ := gitpkg.DetectWorktrees(s.Path, s.Domain)
 			for _, wt := range worktrees {
-				fmt.Printf("  %-23s %-35s %-8s %-8s %-5s %s\n",
+				fmt.Printf("  %-23s %-35s %-8s %-8s %-5s %-10s %s\n",
 					"↳ "+truncate(wt.Branch, 21),
 					truncate(wt.Domain, 35),
 					s.PHPVersion,
 					s.NodeVersion,
 					"—",
+					"",
 					wt.Path,
 				)
 			}

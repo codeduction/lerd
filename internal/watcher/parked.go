@@ -7,8 +7,16 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// frameworkSignals is the set of files whose creation in a project directory
+// signals that a supported PHP framework has been set up there.
+var frameworkSignals = map[string]bool{
+	"artisan":       true, // Laravel
+	"composer.json": true, // Symfony, Drupal, Bedrock WordPress, etc.
+	"wp-login.php":  true, // Traditional WordPress (no Composer)
+}
+
 // Watch monitors the given directories for new and deleted project subdirectories.
-// onNew is called when an artisan file appears in a direct subdirectory of a parked dir.
+// onNew is called when a framework signal file appears in a direct subdirectory of a parked dir.
 // onRemoved is called when a watched subdirectory is deleted.
 func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) error {
 	w, err := fsnotify.NewWatcher()
@@ -30,7 +38,7 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 			continue
 		}
 		parkedDirs[expanded] = true
-		// Also watch existing direct subdirectories so we catch artisan creation inside them.
+		// Also watch existing direct subdirectories so we catch framework signal files inside them.
 		entries, _ := os.ReadDir(expanded)
 		for _, e := range entries {
 			if e.IsDir() {
@@ -52,14 +60,14 @@ func Watch(dirs []string, onNew func(path string), onRemoved func(path string)) 
 			case event.Op&fsnotify.Remove != 0:
 				onRemoved(event.Name)
 			case event.Op&(fsnotify.Create|fsnotify.Write) != 0:
-				if filepath.Base(event.Name) == "artisan" {
+				if frameworkSignals[filepath.Base(event.Name)] {
 					projectDir := filepath.Dir(event.Name)
 					// Only register if this is a direct child of a parked dir.
 					if parkedDirs[filepath.Dir(projectDir)] {
 						onNew(projectDir)
 					}
 				} else if event.Op&fsnotify.Create != 0 {
-					// New direct subdirectory in a parked dir — watch it for artisan.
+					// New direct subdirectory in a parked dir — watch it for framework signal files.
 					if parkedDirs[filepath.Dir(event.Name)] {
 						if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 							if err := w.Add(event.Name); err != nil {

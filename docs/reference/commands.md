@@ -104,15 +104,31 @@
 
 | Command | Description |
 |---|---|
-| `lerd reverb:start` | Start the Laravel Reverb WebSocket server for the current project as a persistent background service |
+| `lerd reverb:start` | Start the Reverb WebSocket server for the current project as a persistent background service |
 | `lerd reverb:stop` | Stop the Reverb server |
 
 ## Schedule
 
 | Command | Description |
 |---|---|
-| `lerd schedule:start` | Start the Laravel task scheduler (`schedule:work`) for the current project as a persistent background service |
+| `lerd schedule:start` | Start the task scheduler (`schedule:work`) for the current project as a persistent background service |
 | `lerd schedule:stop` | Stop the task scheduler |
+
+## Framework workers
+
+| Command | Description |
+|---|---|
+| `lerd worker start <name>` | Start any named framework worker for the current project |
+| `lerd worker stop <name>` | Stop a named framework worker |
+| `lerd worker list` | List all workers defined for the current project's framework |
+
+## Framework definitions
+
+| Command | Description |
+|---|---|
+| `lerd framework list` | List all available framework definitions and their workers |
+| `lerd framework add <name>` | Add or update a framework definition (flags or `--from-file`) |
+| `lerd framework remove <name>` | Remove a user-defined framework definition |
 
 ## Stripe
 

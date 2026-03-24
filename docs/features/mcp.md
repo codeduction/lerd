@@ -41,7 +41,7 @@ Once the MCP server is connected, your AI assistant has access to:
 
 | Tool | Description |
 |---|---|
-| `sites` | List all registered lerd sites (name, domain, path, PHP/Node version, queue status) |
+| `sites` | List all registered lerd sites (name, domain, path, PHP/Node version, framework, worker status) |
 | `runtime_versions` | List installed PHP and Node.js versions with configured defaults |
 | `artisan` | Run `php artisan` in the PHP-FPM container — migrations, generators, seeders, cache, tinker |
 | `composer` | Run `composer` in the PHP-FPM container — install, require, dump-autoload, etc. |
@@ -55,18 +55,24 @@ Once the MCP server is connected, your AI assistant has access to:
 | `xdebug_on` | Enable Xdebug for a PHP version and restart the FPM container |
 | `xdebug_off` | Disable Xdebug for a PHP version |
 | `xdebug_status` | Show Xdebug enabled/disabled state for all PHP versions |
-| `service_start` | Start a built-in or custom service (pass the service name from `service_add` for custom ones) |
+| `service_start` | Start a built-in or custom service |
 | `service_stop` | Stop a built-in or custom service |
 | `service_add` | Register a new custom OCI-based service (MongoDB, RabbitMQ, …) |
 | `service_remove` | Stop and deregister a custom service |
 | `service_env` | Return the recommended `.env` connection variables for a built-in or custom service |
 | `db_export` | Export the project database to a SQL dump file |
-| `queue_start` | Start a queue worker for a site |
-| `queue_stop` | Stop a queue worker |
-| `reverb_start` | Start the Laravel Reverb WebSocket server for a site |
+| `queue_start` | Start the queue worker for a site (any framework with a `queue` worker) |
+| `queue_stop` | Stop the queue worker |
+| `reverb_start` | Start the Reverb WebSocket server for a site |
 | `reverb_stop` | Stop the Reverb server |
-| `schedule_start` | Start the Laravel task scheduler for a site |
+| `schedule_start` | Start the task scheduler for a site |
 | `schedule_stop` | Stop the task scheduler |
+| `worker_start` | Start any named framework worker (e.g. `messenger`, `horizon`, `pulse`) |
+| `worker_stop` | Stop a named framework worker |
+| `worker_list` | List all workers defined for a site's framework with running status |
+| `framework_list` | List all framework definitions including their workers |
+| `framework_add` | Add or update a framework definition; use `name: "laravel"` to add custom workers to Laravel |
+| `framework_remove` | Remove a user-defined framework; for `laravel` removes only custom worker additions |
 | `stripe_listen` | Start a Stripe webhook listener for a site (reads `STRIPE_SECRET` from `.env`) |
 | `stripe_listen_stop` | Stop the Stripe webhook listener |
 | `logs` | Fetch container logs — defaults to current site's FPM; optionally specify nginx, service name, PHP version, or site name |

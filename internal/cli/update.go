@@ -50,8 +50,8 @@ func runUpdate(currentVersion string) error {
 	}
 	lat := lerdUpdate.StripV(latest)
 
-	if cur == lat {
-		fmt.Printf("  Already on latest: v%s\n", lat)
+	if !lerdUpdate.VersionGreaterThan(lat, cur) {
+		fmt.Printf("  Already on latest: v%s\n", cur)
 		return nil
 	}
 

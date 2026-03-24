@@ -1,7 +1,7 @@
 server {
     listen 80;
     server_name {{.Domain}};
-    root {{.Path}}/public;
+    root {{.Path}}/{{.PublicDir}};
     index index.php index.html;
 
     location / {

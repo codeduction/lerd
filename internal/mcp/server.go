@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/geodro/lerd/internal/certs"
@@ -191,26 +192,38 @@ func dispatch(req *rpcRequest) (any, *rpcError) {
 
 // ---- Tool definitions ----
 
+// siteIsLaravel returns true when the default site path points to a registered
+// Laravel site, or when no path is configured (safe default: show all tools).
+func siteIsLaravel() bool {
+	if defaultSitePath == "" {
+		return true
+	}
+	site, err := config.FindSiteByPath(defaultSitePath)
+	if err != nil {
+		return true // unknown site → show all tools
+	}
+	return site.IsLaravel()
+}
+
+// siteFramework returns the framework definition for the configured site path.
+// Returns (nil, false) when no path is set or no framework is found.
+func siteFramework() (*config.Framework, bool) {
+	if defaultSitePath == "" {
+		return nil, false
+	}
+	site, err := config.FindSiteByPath(defaultSitePath)
+	if err != nil {
+		return nil, false
+	}
+	fwName := site.Framework
+	if fwName == "" {
+		fwName, _ = config.DetectFramework(defaultSitePath)
+	}
+	return config.GetFramework(fwName)
+}
+
 func toolList() []mcpTool {
-	return []mcpTool{
-		{
-			Name:        "artisan",
-			Description: "Run a php artisan command inside the lerd PHP-FPM container for the project. Use this to run migrations, generate files, seed databases, clear caches, or any other artisan command.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"path": {
-						Type:        "string",
-						Description: "Absolute path to the Laravel project root (e.g. /home/user/code/myapp). Defaults to LERD_SITE_PATH when omitted.",
-					},
-					"args": {
-						Type:        "array",
-						Description: `Artisan arguments as an array, e.g. ["migrate"] or ["make:model", "Post", "-m"] or ["tinker", "--execute=App\\Models\\User::count()"]`,
-					},
-				},
-				Required: []string{"args"},
-			},
-		},
+	tools := []mcpTool{
 		{
 			Name:        "sites",
 			Description: "List all sites registered with lerd, including domain, path, PHP version, Node version, TLS status, and queue worker status. Call this first to find site names for other tools.",
@@ -245,46 +258,6 @@ func toolList() []mcpTool {
 					},
 				},
 				Required: []string{"name"},
-			},
-		},
-		{
-			Name:        "queue_start",
-			Description: "Start a Laravel queue worker for a registered site as a systemd user service. The worker runs php artisan queue:work inside the PHP-FPM container.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-					"queue": {
-						Type:        "string",
-						Description: `Queue name to process (default: "default")`,
-					},
-					"tries": {
-						Type:        "integer",
-						Description: "Max job attempts before marking failed (default: 3)",
-					},
-					"timeout": {
-						Type:        "integer",
-						Description: "Seconds a job may run before timing out (default: 60)",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "queue_stop",
-			Description: "Stop the Laravel queue worker systemd service for a registered site.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
 			},
 		},
 		{
@@ -572,99 +545,286 @@ func toolList() []mcpTool {
 				},
 			},
 		},
-		{
-			Name:        "reverb_start",
-			Description: "Start the Laravel Reverb WebSocket server for a registered site as a systemd user service. The server runs php artisan reverb:start inside the PHP-FPM container.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "reverb_stop",
-			Description: "Stop the Laravel Reverb WebSocket server for a registered site.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "schedule_start",
-			Description: "Start the Laravel task scheduler (php artisan schedule:work) for a registered site as a systemd user service.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "schedule_stop",
-			Description: "Stop the Laravel task scheduler for a registered site.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "stripe_listen",
-			Description: "Start a Stripe webhook listener for a registered site using the Stripe CLI container. Reads STRIPE_SECRET from the site's .env. Forwards webhooks to the site's /stripe/webhook route by default.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-					"api_key": {
-						Type:        "string",
-						Description: "Stripe secret key (defaults to STRIPE_SECRET in the site's .env)",
-					},
-					"webhook_path": {
-						Type:        "string",
-						Description: `Webhook route path on the app (default: "/stripe/webhook")`,
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
-		{
-			Name:        "stripe_listen_stop",
-			Description: "Stop the Stripe webhook listener for a registered site.",
-			InputSchema: mcpSchema{
-				Type: "object",
-				Properties: map[string]mcpProp{
-					"site": {
-						Type:        "string",
-						Description: "Site name as shown by the sites tool",
-					},
-				},
-				Required: []string{"site"},
-			},
-		},
 	}
+
+	if siteIsLaravel() {
+		tools = append(tools,
+			mcpTool{
+				Name:        "artisan",
+				Description: "Run a php artisan command inside the lerd PHP-FPM container for the project. Use this to run migrations, generate files, seed databases, clear caches, or any other artisan command.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"path": {
+							Type:        "string",
+							Description: "Absolute path to the Laravel project root (e.g. /home/user/code/myapp). Defaults to LERD_SITE_PATH when omitted.",
+						},
+						"args": {
+							Type:        "array",
+							Description: `Artisan arguments as an array, e.g. ["migrate"] or ["make:model", "Post", "-m"] or ["tinker", "--execute=App\\Models\\User::count()"]`,
+						},
+					},
+					Required: []string{"args"},
+				},
+			},
+			mcpTool{
+				Name:        "queue_start",
+				Description: "Start a Laravel queue worker for a registered site as a systemd user service. The worker runs php artisan queue:work inside the PHP-FPM container.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+						"queue": {
+							Type:        "string",
+							Description: `Queue name to process (default: "default")`,
+						},
+						"tries": {
+							Type:        "integer",
+							Description: "Max job attempts before marking failed (default: 3)",
+						},
+						"timeout": {
+							Type:        "integer",
+							Description: "Seconds a job may run before timing out (default: 60)",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "queue_stop",
+				Description: "Stop the Laravel queue worker systemd service for a registered site.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "reverb_start",
+				Description: "Start the Laravel Reverb WebSocket server for a registered site as a systemd user service. The server runs php artisan reverb:start inside the PHP-FPM container.",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"site": {
+						Type:        "string",
+						Description: "Site name as shown by the sites tool",
+					},
+				},
+				Required: []string{"site"},
+			},
+			},
+			mcpTool{
+				Name:        "reverb_stop",
+				Description: "Stop the Laravel Reverb WebSocket server for a registered site.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "schedule_start",
+				Description: "Start the Laravel task scheduler (php artisan schedule:work) for a registered site as a systemd user service.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "schedule_stop",
+				Description: "Stop the Laravel task scheduler for a registered site.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "stripe_listen",
+				Description: "Start a Stripe webhook listener for a registered site using the Stripe CLI container. Reads STRIPE_SECRET from the site's .env. Forwards webhooks to the site's /stripe/webhook route by default.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+						"api_key": {
+							Type:        "string",
+							Description: "Stripe secret key (defaults to STRIPE_SECRET in the site's .env)",
+						},
+						"webhook_path": {
+							Type:        "string",
+							Description: `Webhook route path on the app (default: "/stripe/webhook")`,
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "stripe_listen_stop",
+				Description: "Stop the Stripe webhook listener for a registered site.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+		)
+	}
+
+	tools = append(tools,
+		mcpTool{
+			Name:        "worker_start",
+			Description: "Start a framework-defined worker for a registered site as a systemd user service. The worker command is taken from the framework definition. Use worker_list to see available workers.",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"site": {
+						Type:        "string",
+						Description: "Site name as shown by the sites tool",
+					},
+					"worker": {
+						Type:        "string",
+						Description: "Worker name as defined in the framework (e.g. messenger, horizon, pulse)",
+					},
+				},
+				Required: []string{"site", "worker"},
+			},
+		},
+		mcpTool{
+			Name:        "worker_stop",
+			Description: "Stop a framework-defined worker for a registered site.",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"site": {
+						Type:        "string",
+						Description: "Site name as shown by the sites tool",
+					},
+					"worker": {
+						Type:        "string",
+						Description: "Worker name (e.g. messenger, horizon)",
+					},
+				},
+				Required: []string{"site", "worker"},
+			},
+		},
+		mcpTool{
+			Name:        "worker_list",
+			Description: "List all workers defined for a site's framework, including their running status.",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"site": {
+						Type:        "string",
+						Description: "Site name as shown by the sites tool",
+					},
+				},
+				Required: []string{"site"},
+			},
+		},
+		mcpTool{
+			Name:        "framework_list",
+			Description: "List all available framework definitions (laravel built-in plus any user-defined YAMLs), including their defined workers. Use this before framework_add to see what is already defined.",
+			InputSchema: mcpSchema{Type: "object", Properties: map[string]mcpProp{}},
+		},
+		mcpTool{
+			Name:        "framework_add",
+			Description: "Create or update a framework definition. For laravel, only the workers field is used (built-in settings are always preserved). For other frameworks, creates a full definition at ~/.config/lerd/frameworks/<name>.yaml.",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"name": {
+						Type:        "string",
+						Description: `Framework identifier (slug). Use "laravel" to add custom workers to Laravel (e.g. horizon, pulse). For new frameworks use e.g. symfony, wordpress, drupal.`,
+					},
+					"label": {
+						Type:        "string",
+						Description: "Human-readable name, e.g. Symfony (not required when name is laravel)",
+					},
+					"public_dir": {
+						Type:        "string",
+						Description: `Document root relative to project path (e.g. "public", "web", "."). Not required when name is laravel.`,
+					},
+					"detect_files": {
+						Type:        "array",
+						Description: `List of filenames whose presence signals this framework, e.g. ["wp-login.php"]`,
+					},
+					"detect_packages": {
+						Type:        "array",
+						Description: `List of Composer package names that signal this framework, e.g. ["symfony/framework-bundle"]`,
+					},
+					"env_file": {
+						Type:        "string",
+						Description: `Primary env file path relative to project root (default: ".env")`,
+					},
+					"env_format": {
+						Type:        "string",
+						Description: `Env file format: "dotenv" (default) or "php-const" (for wp-config.php style)`,
+					},
+					"env_fallback_file": {
+						Type:        "string",
+						Description: `Fallback env file if primary doesn't exist (e.g. "wp-config.php")`,
+					},
+					"env_fallback_format": {
+						Type:        "string",
+						Description: `Format for fallback env file`,
+					},
+					"workers": {
+						Type:        "object",
+						Description: `Map of worker name → {label, command, restart} definitions, e.g. {"horizon": {"label": "Horizon", "command": "php artisan horizon", "restart": "always"}}`,
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+		mcpTool{
+			Name:        "framework_remove",
+			Description: "Delete a user-defined framework YAML by name. For laravel, removes only custom worker additions (built-in definition remains).",
+			InputSchema: mcpSchema{
+				Type: "object",
+				Properties: map[string]mcpProp{
+					"name": {
+						Type:        "string",
+						Description: "Framework name to remove",
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+	)
+
+	return tools
 }
 
 // ---- Tool dispatch ----
@@ -688,8 +848,15 @@ func handleToolCall(params json.RawMessage) (any, *rpcError) {
 		args = map[string]any{}
 	}
 
+	laravelOnly := func() (any, *rpcError) {
+		return toolErr(fmt.Sprintf("tool %q is only available for Laravel projects", p.Name)), nil
+	}
+
 	switch p.Name {
 	case "artisan":
+		if !siteIsLaravel() {
+			return laravelOnly()
+		}
 		return execArtisan(args)
 	case "sites":
 		return execSites()
@@ -710,9 +877,21 @@ func handleToolCall(params json.RawMessage) (any, *rpcError) {
 	case "schedule_stop":
 		return execScheduleStop(args)
 	case "stripe_listen":
+		if !siteIsLaravel() {
+			return laravelOnly()
+		}
 		return execStripeListen(args)
 	case "stripe_listen_stop":
+		if !siteIsLaravel() {
+			return laravelOnly()
+		}
 		return execStripeListenStop(args)
+	case "worker_start":
+		return execWorkerStart(args)
+	case "worker_stop":
+		return execWorkerStop(args)
+	case "worker_list":
+		return execWorkerList(args)
 	case "logs":
 		return execLogs(args)
 	case "composer":
@@ -751,6 +930,12 @@ func handleToolCall(params json.RawMessage) (any, *rpcError) {
 		return execXdebugStatus()
 	case "db_export":
 		return execDBExport(args)
+	case "framework_list":
+		return execFrameworkList()
+	case "framework_add":
+		return execFrameworkAdd(args)
+	case "framework_remove":
+		return execFrameworkRemove(args)
 	default:
 		return toolErr("unknown tool: " + p.Name), nil
 	}
@@ -863,14 +1048,19 @@ func execSites() (any, *rpcError) {
 		return toolErr("failed to load sites: " + err.Error()), nil
 	}
 
+	type workerStatus struct {
+		Name    string `json:"name"`
+		Running bool   `json:"running"`
+	}
 	type siteInfo struct {
-		Name         string `json:"name"`
-		Domain       string `json:"domain"`
-		Path         string `json:"path"`
-		PHPVersion   string `json:"php_version"`
-		NodeVersion  string `json:"node_version"`
-		TLS          bool   `json:"tls"`
-		QueueRunning bool   `json:"queue_running"`
+		Name        string         `json:"name"`
+		Domain      string         `json:"domain"`
+		Path        string         `json:"path"`
+		PHPVersion  string         `json:"php_version"`
+		NodeVersion string         `json:"node_version"`
+		TLS         bool           `json:"tls"`
+		Framework   string         `json:"framework,omitempty"`
+		Workers     []workerStatus `json:"workers,omitempty"`
 	}
 
 	var out []siteInfo
@@ -878,15 +1068,32 @@ func execSites() (any, *rpcError) {
 		if s.Ignored {
 			continue
 		}
-		queueStatus, _ := podman.UnitStatus("lerd-queue-" + s.Name)
+
+		fwName := s.Framework
+		if fwName == "" {
+			fwName, _ = config.DetectFramework(s.Path)
+		}
+		var workers []workerStatus
+		if fwName != "" {
+			if fw, ok := config.GetFramework(fwName); ok {
+				for wname := range fw.Workers {
+					unitName := "lerd-" + wname + "-" + s.Name
+					status, _ := podman.UnitStatus(unitName)
+					workers = append(workers, workerStatus{Name: wname, Running: status == "active"})
+				}
+				sort.Slice(workers, func(i, j int) bool { return workers[i].Name < workers[j].Name })
+			}
+		}
+
 		out = append(out, siteInfo{
-			Name:         s.Name,
-			Domain:       s.Domain,
-			Path:         s.Path,
-			PHPVersion:   s.PHPVersion,
-			NodeVersion:  s.NodeVersion,
-			TLS:          s.Secured,
-			QueueRunning: queueStatus == "active",
+			Name:        s.Name,
+			Domain:      s.Domain,
+			Path:        s.Path,
+			PHPVersion:  s.PHPVersion,
+			NodeVersion: s.NodeVersion,
+			TLS:         s.Secured,
+			Framework:   fwName,
+			Workers:     workers,
 		})
 	}
 	if out == nil {
@@ -1926,4 +2133,334 @@ func siteLinkNameAndDomain(dirName, tld string) (string, string) {
 	}
 	name = strings.ReplaceAll(name, ".", "-")
 	return name, name + "." + tld
+}
+
+// ---- Framework management tools ----
+
+func execFrameworkList() (any, *rpcError) {
+	frameworks := config.ListFrameworks()
+	type workerInfo struct {
+		Label   string `json:"label,omitempty"`
+		Command string `json:"command"`
+		Restart string `json:"restart,omitempty"`
+	}
+	type frameworkInfo struct {
+		Name      string                `json:"name"`
+		Label     string                `json:"label"`
+		PublicDir string                `json:"public_dir"`
+		EnvFile   string                `json:"env_file"`
+		EnvFormat string                `json:"env_format"`
+		BuiltIn   bool                  `json:"built_in"`
+		Workers   map[string]workerInfo `json:"workers,omitempty"`
+	}
+	var result []frameworkInfo
+	for _, fw := range frameworks {
+		// For laravel, use the merged definition (includes user-defined workers)
+		merged := fw
+		if fw.Name == "laravel" {
+			if m, ok := config.GetFramework("laravel"); ok {
+				merged = m
+			}
+		}
+		ef := merged.Env.File
+		if ef == "" {
+			ef = ".env"
+		}
+		efmt := merged.Env.Format
+		if efmt == "" {
+			efmt = "dotenv"
+		}
+		var workers map[string]workerInfo
+		if len(merged.Workers) > 0 {
+			workers = make(map[string]workerInfo, len(merged.Workers))
+			for n, w := range merged.Workers {
+				workers[n] = workerInfo{Label: w.Label, Command: w.Command, Restart: w.Restart}
+			}
+		}
+		result = append(result, frameworkInfo{
+			Name:      merged.Name,
+			Label:     merged.Label,
+			PublicDir: merged.PublicDir,
+			EnvFile:   ef,
+			EnvFormat: efmt,
+			BuiltIn:   merged.Name == "laravel",
+			Workers:   workers,
+		})
+	}
+	if result == nil {
+		result = []frameworkInfo{}
+	}
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return toolOK(string(data)), nil
+}
+
+func execFrameworkAdd(args map[string]any) (any, *rpcError) {
+	name := strArg(args, "name")
+	if name == "" {
+		return toolErr("name is required"), nil
+	}
+
+	// Parse workers map if provided
+	var workers map[string]config.FrameworkWorker
+	if raw, ok := args["workers"]; ok {
+		if wmap, ok := raw.(map[string]any); ok {
+			workers = make(map[string]config.FrameworkWorker, len(wmap))
+			for wname, wval := range wmap {
+				if wobj, ok := wval.(map[string]any); ok {
+					label, _ := wobj["label"].(string)
+					command, _ := wobj["command"].(string)
+					restart, _ := wobj["restart"].(string)
+					workers[wname] = config.FrameworkWorker{Label: label, Command: command, Restart: restart}
+				}
+			}
+		}
+	}
+
+	if name == "laravel" {
+		// For Laravel, only persist custom workers (built-in handles everything else)
+		if len(workers) == 0 {
+			return toolErr("workers is required when adding custom workers to laravel"), nil
+		}
+		fw := &config.Framework{Name: "laravel", Workers: workers}
+		if err := config.SaveFramework(fw); err != nil {
+			return toolErr(fmt.Sprintf("saving framework: %v", err)), nil
+		}
+		names := make([]string, 0, len(workers))
+		for n := range workers {
+			names = append(names, n)
+		}
+		return toolOK(fmt.Sprintf("Custom workers added to Laravel: %s\nThese are merged with the built-in queue/schedule/reverb workers.", strings.Join(names, ", "))), nil
+	}
+
+	label := strArg(args, "label")
+	if label == "" {
+		label = name
+	}
+
+	fw := &config.Framework{
+		Name:      name,
+		Label:     label,
+		PublicDir: strArg(args, "public_dir"),
+		Composer:  "auto",
+		NPM:       "auto",
+		Workers:   workers,
+	}
+	if fw.PublicDir == "" {
+		fw.PublicDir = "public"
+	}
+
+	// Detection rules
+	if files, ok := args["detect_files"]; ok {
+		if fileSlice, ok := files.([]any); ok {
+			for _, f := range fileSlice {
+				if s, ok := f.(string); ok {
+					fw.Detect = append(fw.Detect, config.FrameworkRule{File: s})
+				}
+			}
+		}
+	}
+	if pkgs, ok := args["detect_packages"]; ok {
+		if pkgSlice, ok := pkgs.([]any); ok {
+			for _, p := range pkgSlice {
+				if s, ok := p.(string); ok {
+					fw.Detect = append(fw.Detect, config.FrameworkRule{Composer: s})
+				}
+			}
+		}
+	}
+
+	// Env config
+	fw.Env = config.FrameworkEnvConf{
+		File:           strArg(args, "env_file"),
+		Format:         strArg(args, "env_format"),
+		FallbackFile:   strArg(args, "env_fallback_file"),
+		FallbackFormat: strArg(args, "env_fallback_format"),
+	}
+	if fw.Env.File == "" {
+		fw.Env.File = ".env"
+	}
+
+	if err := config.SaveFramework(fw); err != nil {
+		return toolErr(fmt.Sprintf("saving framework: %v", err)), nil
+	}
+
+	return toolOK(fmt.Sprintf("Framework %q saved. Use site_link to register a project using this framework.", name)), nil
+}
+
+func execWorkerStart(args map[string]any) (any, *rpcError) {
+	siteName := strArg(args, "site")
+	if siteName == "" {
+		return toolErr("site is required"), nil
+	}
+	workerName := strArg(args, "worker")
+	if workerName == "" {
+		return toolErr("worker is required"), nil
+	}
+
+	site, err := config.FindSite(siteName)
+	if err != nil {
+		return toolErr("site not found: " + siteName), nil
+	}
+
+	fwName := site.Framework
+	if fwName == "" {
+		fwName, _ = config.DetectFramework(site.Path)
+	}
+	if fwName == "" {
+		return toolErr("no framework detected for site " + siteName), nil
+	}
+	fw, ok := config.GetFramework(fwName)
+	if !ok {
+		return toolErr("framework not found: " + fwName), nil
+	}
+	worker, ok := fw.Workers[workerName]
+	if !ok {
+		return toolErr(fmt.Sprintf("worker %q not found in framework %q — use worker_list to see available workers", workerName, fwName)), nil
+	}
+
+	phpVersion := site.PHPVersion
+	if detected, err := phpDet.DetectVersion(site.Path); err == nil && detected != "" {
+		phpVersion = detected
+	}
+	versionShort := strings.ReplaceAll(phpVersion, ".", "")
+	fpmUnit := "lerd-php" + versionShort + "-fpm"
+	container := "lerd-php" + versionShort + "-fpm"
+	unitName := "lerd-" + workerName + "-" + siteName
+
+	label := worker.Label
+	if label == "" {
+		label = workerName
+	}
+	restart := worker.Restart
+	if restart == "" {
+		restart = "always"
+	}
+
+	unit := fmt.Sprintf(`[Unit]
+Description=Lerd %s (%s)
+After=network.target %s.service
+BindsTo=%s.service
+
+[Service]
+Type=simple
+Restart=%s
+RestartSec=5
+ExecStart=podman exec -w %s %s %s
+
+[Install]
+WantedBy=default.target
+`, label, siteName, fpmUnit, fpmUnit, restart, site.Path, container, worker.Command)
+
+	if err := lerdSystemd.WriteService(unitName, unit); err != nil {
+		return toolErr("writing service unit: " + err.Error()), nil
+	}
+	if err := podman.DaemonReload(); err != nil {
+		return toolErr("daemon-reload: " + err.Error()), nil
+	}
+	_ = lerdSystemd.EnableService(unitName)
+	if err := lerdSystemd.StartService(unitName); err != nil {
+		return toolErr(fmt.Sprintf("starting %s: %v", workerName, err)), nil
+	}
+	return toolOK(fmt.Sprintf("%s started for %s\nLogs: journalctl --user -u %s -f", label, siteName, unitName)), nil
+}
+
+func execWorkerStop(args map[string]any) (any, *rpcError) {
+	siteName := strArg(args, "site")
+	if siteName == "" {
+		return toolErr("site is required"), nil
+	}
+	workerName := strArg(args, "worker")
+	if workerName == "" {
+		return toolErr("worker is required"), nil
+	}
+	unitName := "lerd-" + workerName + "-" + siteName
+	unitFile := filepath.Join(config.SystemdUserDir(), unitName+".service")
+	_ = lerdSystemd.DisableService(unitName)
+	_ = podman.StopUnit(unitName)
+	if err := os.Remove(unitFile); err != nil && !os.IsNotExist(err) {
+		return toolErr("removing unit file: " + err.Error()), nil
+	}
+	_ = podman.DaemonReload()
+	return toolOK(fmt.Sprintf("%s worker stopped for %s", workerName, siteName)), nil
+}
+
+func execWorkerList(args map[string]any) (any, *rpcError) {
+	siteName := strArg(args, "site")
+	if siteName == "" {
+		return toolErr("site is required"), nil
+	}
+
+	site, err := config.FindSite(siteName)
+	if err != nil {
+		return toolErr("site not found: " + siteName), nil
+	}
+
+	fwName := site.Framework
+	if fwName == "" {
+		fwName, _ = config.DetectFramework(site.Path)
+	}
+	if fwName == "" {
+		data, _ := json.MarshalIndent([]struct{}{}, "", "  ")
+		return toolOK(string(data)), nil
+	}
+	fw, ok := config.GetFramework(fwName)
+	if !ok || len(fw.Workers) == 0 {
+		data, _ := json.MarshalIndent([]struct{}{}, "", "  ")
+		return toolOK(string(data)), nil
+	}
+
+	type workerInfo struct {
+		Name    string `json:"name"`
+		Label   string `json:"label"`
+		Command string `json:"command"`
+		Restart string `json:"restart"`
+		Running bool   `json:"running"`
+		Unit    string `json:"unit"`
+	}
+
+	var result []workerInfo
+	for wname, w := range fw.Workers {
+		unitName := "lerd-" + wname + "-" + siteName
+		status, _ := podman.UnitStatus(unitName)
+		label := w.Label
+		if label == "" {
+			label = wname
+		}
+		restart := w.Restart
+		if restart == "" {
+			restart = "always"
+		}
+		result = append(result, workerInfo{
+			Name:    wname,
+			Label:   label,
+			Command: w.Command,
+			Restart: restart,
+			Running: status == "active",
+			Unit:    unitName,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return toolOK(string(data)), nil
+}
+
+func execFrameworkRemove(args map[string]any) (any, *rpcError) {
+	name := strArg(args, "name")
+	if name == "" {
+		return toolErr("name is required"), nil
+	}
+	if err := config.RemoveFramework(name); err != nil {
+		if os.IsNotExist(err) {
+			if name == "laravel" {
+				return toolErr("no custom workers defined for laravel"), nil
+			}
+			return toolErr(fmt.Sprintf("framework %q not found", name)), nil
+		}
+		return toolErr(fmt.Sprintf("removing framework: %v", err)), nil
+	}
+	if name == "laravel" {
+		return toolOK("Custom Laravel worker additions removed. Built-in queue/schedule/reverb workers remain."), nil
+	}
+	return toolOK(fmt.Sprintf("Framework %q removed.", name)), nil
 }

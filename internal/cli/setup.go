@@ -30,20 +30,26 @@ func NewSetupCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Bootstrap a Laravel project (composer, npm, env, migrate, assets, open)",
+		Short: "Bootstrap a PHP project (composer, npm, env, migrate, assets, open)",
 		Long: `Runs a series of standard project setup steps with an interactive
 step-selector so you can toggle which steps to execute before they run.
 
-Steps (smart defaults based on project state):
+Steps for all frameworks:
   1. composer install        — skipped if vendor/ already exists
   2. npm ci                  — skipped if node_modules/ already exists
-  3. lerd env                — configure .env with lerd service settings
+  3. lerd env                — configure env file with lerd service settings
   4. lerd mcp:inject         — inject MCP config (off by default)
-  5. php artisan migrate     — run database migrations
-  6. php artisan db:seed     — seed the database (off by default)
-  7. npm run <build|production|prod> — build front-end assets (detected from package.json scripts)
-  8. lerd secure             — enable HTTPS via mkcert (off by default)
-  9. lerd open               — open site in browser
+  5. npm run <build|production|prod> — build front-end assets (detected from package.json scripts)
+  6. lerd secure             — enable HTTPS via mkcert (off by default)
+
+Additional steps for Laravel projects:
+  7. php artisan storage:link — create storage symlink
+  8. php artisan migrate     — run database migrations
+  9. php artisan db:seed     — seed the database (off by default)
+  10. queue:start            — start queue worker
+  11. stripe:listen          — start Stripe webhook listener (off by default)
+  12. schedule:start         — start task scheduler
+  13. reverb:start           — start Reverb WebSocket server (if configured)
 
 Site registration (lerd link) always runs first, before the step selector.
 
@@ -70,6 +76,9 @@ func runSetup(allSteps, skipOpen bool) error {
 	if err := runLink(nil, ""); err != nil {
 		fmt.Printf("  [WARN] lerd link: %v\n", err)
 	}
+
+	site, _ := config.FindSiteByPath(cwd)
+	isLaravel := site != nil && site.IsLaravel()
 
 	_, vendorMissing := os.Stat(cwd + "/vendor")
 	_, nodeModulesMissing := os.Stat(cwd + "/node_modules")
@@ -103,31 +112,10 @@ func runSetup(allSteps, skipOpen bool) error {
 			},
 		},
 		{
-			label:   "php artisan storage:link",
-			enabled: siteNeedsStorageLink(cwd),
-			run: func() error {
-				return artisanIn(cwd, "storage:link")
-			},
-		},
-		{
 			label:   "lerd mcp:inject",
 			enabled: false,
 			run: func() error {
 				return runMCPInject("")
-			},
-		},
-		{
-			label:   "php artisan migrate",
-			enabled: true,
-			run: func() error {
-				return artisanIn(cwd, "migrate")
-			},
-		},
-		{
-			label:   "php artisan db:seed",
-			enabled: false,
-			run: func() error {
-				return artisanIn(cwd, "db:seed")
 			},
 		},
 		{
@@ -139,6 +127,30 @@ func runSetup(allSteps, skipOpen bool) error {
 		},
 	}
 
+	if isLaravel {
+		steps = append(steps, setupStep{
+			label:   "php artisan storage:link",
+			enabled: siteNeedsStorageLink(cwd),
+			run: func() error {
+				return artisanIn(cwd, "storage:link")
+			},
+		})
+		steps = append(steps, setupStep{
+			label:   "php artisan migrate",
+			enabled: true,
+			run: func() error {
+				return artisanIn(cwd, "migrate")
+			},
+		})
+		steps = append(steps, setupStep{
+			label:   "php artisan db:seed",
+			enabled: false,
+			run: func() error {
+				return artisanIn(cwd, "db:seed")
+			},
+		})
+	}
+
 	steps = append(steps, setupStep{
 		label:   "lerd secure",
 		enabled: false,
@@ -147,84 +159,86 @@ func runSetup(allSteps, skipOpen bool) error {
 		},
 	})
 
-	steps = append(steps, setupStep{
-		label:   "queue:start",
-		enabled: siteUsesRedisQueue(cwd),
-		run: func() error {
-			site, err := config.FindSiteByPath(cwd)
-			if err != nil {
-				return fmt.Errorf("site not registered: %w", err)
-			}
-			phpVersion := site.PHPVersion
-			if phpVersion == "" {
-				if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
-					phpVersion = detected
-				} else {
-					cfg, _ := config.LoadGlobal()
-					phpVersion = cfg.PHP.DefaultVersion
+	if isLaravel {
+		steps = append(steps, setupStep{
+			label:   "queue:start",
+			enabled: siteUsesRedisQueue(cwd),
+			run: func() error {
+				s, err := config.FindSiteByPath(cwd)
+				if err != nil {
+					return fmt.Errorf("site not registered: %w", err)
 				}
-			}
-			return QueueStartForSite(site.Name, cwd, phpVersion)
-		},
-	})
-
-	steps = append(steps, setupStep{
-		label:   "stripe:listen",
-		enabled: siteHasStripeSecret(cwd),
-		run: func() error {
-			site, err := config.FindSiteByPath(cwd)
-			if err != nil {
-				return fmt.Errorf("site not registered: %w", err)
-			}
-			base := siteURL(cwd)
-			if base == "" {
-				return fmt.Errorf("could not resolve site URL — run 'lerd link' first")
-			}
-			return StripeStartForSite(site.Name, cwd, base)
-		},
-	})
-
-	steps = append(steps, setupStep{
-		label:   "schedule:start",
-		enabled: true,
-		run: func() error {
-			site, err := config.FindSiteByPath(cwd)
-			if err != nil {
-				return fmt.Errorf("site not registered: %w", err)
-			}
-			phpVersion := site.PHPVersion
-			if phpVersion == "" {
-				if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
-					phpVersion = detected
-				} else {
-					cfg, _ := config.LoadGlobal()
-					phpVersion = cfg.PHP.DefaultVersion
+				phpVersion := s.PHPVersion
+				if phpVersion == "" {
+					if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
+						phpVersion = detected
+					} else {
+						cfg, _ := config.LoadGlobal()
+						phpVersion = cfg.PHP.DefaultVersion
+					}
 				}
-			}
-			return ScheduleStartForSite(site.Name, cwd, phpVersion)
-		},
-	})
+				return QueueStartForSite(s.Name, cwd, phpVersion)
+			},
+		})
 
-	steps = append(steps, setupStep{
-		label:   "reverb:start",
-		enabled: SiteUsesReverb(cwd),
-		run: func() error {
-			site, err := config.FindSiteByPath(cwd)
-			if err != nil {
-				return fmt.Errorf("site not registered: %w", err)
-			}
-			phpVersion := site.PHPVersion
-			if phpVersion == "" {
-				if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
-					phpVersion = detected
-				} else {
-					cfg, _ := config.LoadGlobal()
-					phpVersion = cfg.PHP.DefaultVersion
+		steps = append(steps, setupStep{
+			label:   "stripe:listen",
+			enabled: siteHasStripeSecret(cwd),
+			run: func() error {
+				s, err := config.FindSiteByPath(cwd)
+				if err != nil {
+					return fmt.Errorf("site not registered: %w", err)
 				}
-			}
-			return ReverbStartForSite(site.Name, cwd, phpVersion)
-		},
-	})
+				base := siteURL(cwd)
+				if base == "" {
+					return fmt.Errorf("could not resolve site URL — run 'lerd link' first")
+				}
+				return StripeStartForSite(s.Name, cwd, base)
+			},
+		})
+
+		steps = append(steps, setupStep{
+			label:   "schedule:start",
+			enabled: true,
+			run: func() error {
+				s, err := config.FindSiteByPath(cwd)
+				if err != nil {
+					return fmt.Errorf("site not registered: %w", err)
+				}
+				phpVersion := s.PHPVersion
+				if phpVersion == "" {
+					if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
+						phpVersion = detected
+					} else {
+						cfg, _ := config.LoadGlobal()
+						phpVersion = cfg.PHP.DefaultVersion
+					}
+				}
+				return ScheduleStartForSite(s.Name, cwd, phpVersion)
+			},
+		})
+
+		steps = append(steps, setupStep{
+			label:   "reverb:start",
+			enabled: SiteUsesReverb(cwd),
+			run: func() error {
+				s, err := config.FindSiteByPath(cwd)
+				if err != nil {
+					return fmt.Errorf("site not registered: %w", err)
+				}
+				phpVersion := s.PHPVersion
+				if phpVersion == "" {
+					if detected, detErr := phpDet.DetectVersion(cwd); detErr == nil {
+						phpVersion = detected
+					} else {
+						cfg, _ := config.LoadGlobal()
+						phpVersion = cfg.PHP.DefaultVersion
+					}
+				}
+				return ReverbStartForSite(s.Name, cwd, phpVersion)
+			},
+		})
+	}
 
 	if !skipOpen {
 		steps = append(steps, setupStep{

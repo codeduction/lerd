@@ -11,6 +11,7 @@ import (
 	nodeDet "github.com/geodro/lerd/internal/node"
 	phpDet "github.com/geodro/lerd/internal/php"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 // NewLinkCmd returns the link command.
@@ -66,6 +67,12 @@ func runLink(args []string, customDomain string) error {
 		nodeVersion = cfg.Node.DefaultVersion
 	}
 
+	framework, ok := resolveFramework(cwd)
+	detectedPublicDir := ""
+	if !ok {
+		detectedPublicDir = config.DetectPublicDir(cwd)
+	}
+
 	// Preserve Secured state if the same site is being re-linked.
 	secured := false
 	if existing, err := config.FindSite(name); err == nil && existing != nil && existing.Path == cwd {
@@ -79,6 +86,8 @@ func runLink(args []string, customDomain string) error {
 		PHPVersion:  phpVersion,
 		NodeVersion: nodeVersion,
 		Secured:     secured,
+		Framework:   framework,
+		PublicDir:   detectedPublicDir,
 	}
 
 	if err := config.AddSite(site); err != nil {
@@ -106,11 +115,39 @@ func runLink(args []string, customDomain string) error {
 		fmt.Printf("[WARN] FPM quadlet for PHP %s: %v\n", phpVersion, err)
 	}
 
-	fmt.Printf("Linked: %s -> %s (PHP %s, Node %s)\n", name, domain, phpVersion, nodeVersion)
+	frameworkLabel := framework
+	if frameworkLabel == "" {
+		frameworkLabel = "unknown (public: " + detectedPublicDir + ")"
+	}
+	fmt.Printf("Linked: %s -> %s (PHP %s, Node %s, Framework: %s)\n", name, domain, phpVersion, nodeVersion, frameworkLabel)
 
 	if err := nginx.Reload(); err != nil {
 		fmt.Printf("[WARN] nginx reload: %v\n", err)
 	}
 
 	return nil
+}
+
+// resolveFramework returns the framework name for the project at dir.
+// It reads the .lerd.yaml framework field first (explicit override), then
+// auto-detects via config.DetectFramework. Returns ("", false) if no
+// framework definition is found.
+func resolveFramework(dir string) (string, bool) {
+	// Check .lerd.yaml for explicit framework override
+	type lerdYAML struct {
+		PHPVersion string `yaml:"php_version"`
+		Framework  string `yaml:"framework"`
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, ".lerd.yaml")); err == nil {
+		var local lerdYAML
+		if yaml.Unmarshal(data, &local) == nil && local.Framework != "" {
+			// Validate that a definition exists for the specified framework
+			if _, ok := config.GetFramework(local.Framework); ok {
+				return local.Framework, true
+			}
+			return "", false
+		}
+	}
+
+	return config.DetectFramework(dir)
 }

@@ -23,11 +23,25 @@ type VhostData struct {
 	PHPVersion      string
 	PHPVersionShort string
 	CertDomain      string // domain whose cert files to use (defaults to Domain)
+	PublicDir       string // document root subdirectory, e.g. "public", "web", "."
 }
 
 // phpShort converts "8.4" → "84".
 func phpShort(version string) string {
 	return strings.ReplaceAll(version, ".", "")
+}
+
+// resolvePublicDir returns the document root subdirectory for a site.
+// site.PublicDir takes precedence (set when no framework matched at link time),
+// then the framework definition's PublicDir, then "public" as a default.
+func resolvePublicDir(site config.Site) string {
+	if site.PublicDir != "" {
+		return site.PublicDir
+	}
+	if fw, ok := config.GetFramework(site.Framework); ok && fw.PublicDir != "" {
+		return fw.PublicDir
+	}
+	return "public"
 }
 
 // GenerateVhost renders the HTTP vhost template and writes it to conf.d.
@@ -42,11 +56,14 @@ func GenerateVhost(site config.Site, phpVersion string) error {
 		return err
 	}
 
+	publicDir := resolvePublicDir(site)
+
 	data := VhostData{
 		Domain:          site.Domain,
 		Path:            site.Path,
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
+		PublicDir:       publicDir,
 	}
 
 	var buf bytes.Buffer
@@ -73,12 +90,15 @@ func GenerateSSLVhost(site config.Site, phpVersion string) error {
 		return err
 	}
 
+	publicDir := resolvePublicDir(site)
+
 	data := VhostData{
 		Domain:          site.Domain,
 		Path:            site.Path,
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
 		CertDomain:      site.Domain,
+		PublicDir:       publicDir,
 	}
 
 	var buf bytes.Buffer
@@ -111,6 +131,7 @@ func GenerateWorktreeVhost(domain, path, phpVersion string) error {
 		Path:            path,
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
+		PublicDir:       "public",
 	}
 
 	var buf bytes.Buffer
@@ -144,6 +165,7 @@ func GenerateWorktreeSSLVhost(domain, path, phpVersion, parentDomain string) err
 		PHPVersion:      phpVersion,
 		PHPVersionShort: phpShort(phpVersion),
 		CertDomain:      parentDomain,
+		PublicDir:       "public",
 	}
 
 	var buf bytes.Buffer

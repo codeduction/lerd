@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -109,6 +110,7 @@ func Start(currentVersion string) error {
 	mux.HandleFunc("/api/stripe/", withCORS(handleStripeLogs))
 	mux.HandleFunc("/api/schedule/", withCORS(handleScheduleLogs))
 	mux.HandleFunc("/api/reverb/", withCORS(handleReverbLogs))
+	mux.HandleFunc("/api/worker/", withCORS(handleWorkerLogs))
 	mux.HandleFunc("/api/watcher/logs", withCORS(handleWatcherLogs))
 	mux.HandleFunc("/api/watcher/start", withCORS(handleWatcherStart))
 	mux.HandleFunc("/api/settings", withCORS(handleSettings))
@@ -258,23 +260,36 @@ type WorktreeResponse struct {
 	Path   string `json:"path"`
 }
 
+// WorkerStatus represents a single framework worker and its running state.
+type WorkerStatus struct {
+	Name    string `json:"name"`
+	Label   string `json:"label"`
+	Running bool   `json:"running"`
+}
+
 // SiteResponse is the response for GET /api/sites.
 type SiteResponse struct {
-	Name         string             `json:"name"`
-	Domain       string             `json:"domain"`
-	Path         string             `json:"path"`
-	PHPVersion   string             `json:"php_version"`
-	NodeVersion  string             `json:"node_version"`
-	TLS          bool               `json:"tls"`
-	FPMRunning   bool               `json:"fpm_running"`
-	QueueRunning    bool               `json:"queue_running"`
-	StripeRunning   bool               `json:"stripe_running"`
-	StripeSecretSet bool               `json:"stripe_secret_set"`
-	ScheduleRunning bool               `json:"schedule_running"`
-	ReverbRunning   bool               `json:"reverb_running"`
-	HasReverb       bool               `json:"has_reverb"`
-	Branch          string             `json:"branch"`
-	Worktrees       []WorktreeResponse `json:"worktrees"`
+	Name              string             `json:"name"`
+	Domain            string             `json:"domain"`
+	Path              string             `json:"path"`
+	PHPVersion        string             `json:"php_version"`
+	NodeVersion       string             `json:"node_version"`
+	TLS               bool               `json:"tls"`
+	Framework         string             `json:"framework"`
+	FPMRunning        bool               `json:"fpm_running"`
+	IsLaravel         bool               `json:"is_laravel"`
+	FrameworkLabel    string             `json:"framework_label"`
+	QueueRunning      bool               `json:"queue_running"`
+	StripeRunning     bool               `json:"stripe_running"`
+	StripeSecretSet   bool               `json:"stripe_secret_set"`
+	ScheduleRunning   bool               `json:"schedule_running"`
+	ReverbRunning     bool               `json:"reverb_running"`
+	HasReverb         bool               `json:"has_reverb"`
+	HasQueueWorker    bool               `json:"has_queue_worker"`
+	HasScheduleWorker bool               `json:"has_schedule_worker"`
+	FrameworkWorkers  []WorkerStatus     `json:"framework_workers,omitempty"`
+	Branch            string             `json:"branch"`
+	Worktrees         []WorktreeResponse `json:"worktrees"`
 }
 
 func handleSites(w http.ResponseWriter, _ *http.Request) {
@@ -317,12 +332,77 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 			short := strings.ReplaceAll(phpVersion, ".", "")
 			fpmRunning, _ = podman.ContainerRunning("lerd-php" + short + "-fpm")
 		}
-		queueStatus, _ := podman.UnitStatus("lerd-queue-" + s.Name)
-		stripeStatus, _ := podman.UnitStatus("lerd-stripe-" + s.Name)
-		stripeSecretSet := cli.StripeSecretSet(s.Path)
-		scheduleStatus, _ := podman.UnitStatus("lerd-schedule-" + s.Name)
-		reverbStatus, _ := podman.UnitStatus("lerd-reverb-" + s.Name)
-		hasReverb := cli.SiteUsesReverb(s.Path)
+		fwName := s.Framework
+		if fwName == "" {
+			fwName, _ = config.DetectFramework(s.Path)
+		}
+		isLaravel := fwName == "laravel"
+		fw, hasFw := config.GetFramework(fwName)
+
+		var queueStatus, stripeStatus, scheduleStatus, reverbStatus string
+		var stripeSecretSet, hasReverb, hasQueueWorker, hasScheduleWorker bool
+
+		// Stripe is Laravel-only
+		if isLaravel {
+			stripeStatus, _ = podman.UnitStatus("lerd-stripe-" + s.Name)
+			stripeSecretSet = cli.StripeSecretSet(s.Path)
+		}
+
+		// queue/schedule/reverb: driven by framework worker definitions
+		if hasFw && fw.Workers != nil {
+			if _, ok := fw.Workers["queue"]; ok {
+				hasQueueWorker = true
+				queueStatus, _ = podman.UnitStatus("lerd-queue-" + s.Name)
+			}
+			if _, ok := fw.Workers["schedule"]; ok {
+				hasScheduleWorker = true
+				scheduleStatus, _ = podman.UnitStatus("lerd-schedule-" + s.Name)
+			}
+			if _, ok := fw.Workers["reverb"]; ok {
+				// For Laravel, reverb toggle still requires the package/env to be present.
+				// For other frameworks, defining the worker is enough to show the toggle.
+				if isLaravel {
+					hasReverb = cli.SiteUsesReverb(s.Path)
+				} else {
+					hasReverb = true
+				}
+				if hasReverb {
+					reverbStatus, _ = podman.UnitStatus("lerd-reverb-" + s.Name)
+				}
+			}
+		}
+		// For Laravel without reverb in workers map (shouldn't happen with built-in, but guard anyway)
+		if isLaravel && !hasReverb {
+			reverbStatus, _ = podman.UnitStatus("lerd-reverb-" + s.Name)
+			hasReverb = cli.SiteUsesReverb(s.Path)
+		}
+
+		// Collect custom framework workers (non-builtin names)
+		var fwWorkers []WorkerStatus
+		if hasFw && fw.Workers != nil {
+			names := make([]string, 0, len(fw.Workers))
+			for n := range fw.Workers {
+				switch n {
+				case "queue", "schedule", "reverb":
+					continue
+				}
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			for _, wname := range names {
+				w := fw.Workers[wname]
+				unitStatus, _ := podman.UnitStatus("lerd-" + wname + "-" + s.Name)
+				label := w.Label
+				if label == "" {
+					label = wname
+				}
+				fwWorkers = append(fwWorkers, WorkerStatus{
+					Name:    wname,
+					Label:   label,
+					Running: unitStatus == "active",
+				})
+			}
+		}
 
 		worktreeResponses := []WorktreeResponse{}
 		mainBranch := gitpkg.MainBranch(s.Path)
@@ -337,21 +417,27 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		sites = append(sites, SiteResponse{
-			Name:         s.Name,
-			Domain:       s.Domain,
-			Path:         s.Path,
-			PHPVersion:   phpVersion,
-			NodeVersion:  nodeVersion,
-			TLS:          s.Secured,
-			FPMRunning:   fpmRunning,
-			QueueRunning:    queueStatus == "active",
-			StripeRunning:   stripeStatus == "active",
-			StripeSecretSet: stripeSecretSet,
-			ScheduleRunning: scheduleStatus == "active",
-			ReverbRunning:   reverbStatus == "active",
-			HasReverb:       hasReverb,
-			Branch:          mainBranch,
-			Worktrees:    worktreeResponses,
+			Name:              s.Name,
+			Domain:            s.Domain,
+			Path:              s.Path,
+			PHPVersion:        phpVersion,
+			NodeVersion:       nodeVersion,
+			TLS:               s.Secured,
+			Framework:         s.Framework,
+			IsLaravel:         isLaravel,
+			FrameworkLabel:    frameworkLabel(fwName),
+			FPMRunning:        fpmRunning,
+			QueueRunning:      queueStatus == "active",
+			StripeRunning:     stripeStatus == "active",
+			StripeSecretSet:   stripeSecretSet,
+			ScheduleRunning:   scheduleStatus == "active",
+			ReverbRunning:     reverbStatus == "active",
+			HasReverb:         hasReverb,
+			HasQueueWorker:    hasQueueWorker,
+			HasScheduleWorker: hasScheduleWorker,
+			FrameworkWorkers:  fwWorkers,
+			Branch:            mainBranch,
+			Worktrees:         worktreeResponses,
 		})
 	}
 	if sites == nil {
@@ -372,6 +458,8 @@ type ServiceResponse struct {
 	StripeListenerSite string            `json:"stripe_listener_site,omitempty"`
 	ScheduleWorkerSite string            `json:"schedule_worker_site,omitempty"`
 	ReverbSite         string            `json:"reverb_site,omitempty"`
+	WorkerSite         string            `json:"worker_site,omitempty"`
+	WorkerName         string            `json:"worker_name,omitempty"`
 }
 
 // builtinDashboards maps built-in service names to their dashboard URLs.
@@ -406,6 +494,18 @@ func buildServiceResponse(name string) ServiceResponse {
 }
 
 // listActiveQueueWorkers returns the site names of active lerd-queue-* systemd units.
+// frameworkLabel returns the display label for a framework name.
+// Returns the Label field from the framework definition, or an empty string if not found.
+func frameworkLabel(name string) string {
+	if name == "" {
+		return ""
+	}
+	if fw, ok := config.GetFramework(name); ok {
+		return fw.Label
+	}
+	return name
+}
+
 func listActiveQueueWorkers() []string {
 	return listActiveUnitsBySuffix("lerd-queue-*.service", "lerd-queue-")
 }
@@ -519,6 +619,42 @@ func handleServices(w http.ResponseWriter, _ *http.Request) {
 			ReverbSite: siteName,
 		})
 	}
+	// Custom framework workers (non-builtin: not queue/schedule/reverb)
+	if reg2, err2 := config.LoadSites(); err2 == nil {
+		for _, s := range reg2.Sites {
+			if s.Ignored {
+				continue
+			}
+			fwN := s.Framework
+			if fwN == "" {
+				fwN, _ = config.DetectFramework(s.Path)
+			}
+			fw2, ok2 := config.GetFramework(fwN)
+			if !ok2 || fw2.Workers == nil {
+				continue
+			}
+			for wname, w := range fw2.Workers {
+				switch wname {
+				case "queue", "schedule", "reverb":
+					continue
+				}
+				unitStatus, _ := podman.UnitStatus("lerd-" + wname + "-" + s.Name)
+				if unitStatus == "active" {
+					label := w.Label
+					if label == "" {
+						label = wname
+					}
+					services = append(services, ServiceResponse{
+						Name:       wname + "-" + s.Name,
+						Status:     "active",
+						EnvVars:    map[string]string{},
+						WorkerSite: s.Name,
+						WorkerName: wname,
+					})
+				}
+			}
+		}
+	}
 	writeJSON(w, services)
 }
 
@@ -628,6 +764,45 @@ func handleServiceAction(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, ServiceActionResponse{OK: false, Error: "unsupported action for reverb server"})
 		}
 		return
+	}
+
+	// Handle custom framework worker services: name is {workerName}-{siteName}.
+	// Detect by looking for a matching registered site + framework worker.
+	if action == "stop" {
+		if reg3, err3 := config.LoadSites(); err3 == nil {
+			for _, s := range reg3.Sites {
+				if s.Ignored {
+					continue
+				}
+				fwN3 := s.Framework
+				if fwN3 == "" {
+					fwN3, _ = config.DetectFramework(s.Path)
+				}
+				fw3, ok3 := config.GetFramework(fwN3)
+				if !ok3 || fw3.Workers == nil {
+					continue
+				}
+				for wname := range fw3.Workers {
+					switch wname {
+					case "queue", "schedule", "reverb":
+						continue
+					}
+					if wname+"-"+s.Name == name {
+						opErr := cli.WorkerStopForSite(s.Name, wname)
+						resp := ServiceActionResponse{
+							ServiceResponse: ServiceResponse{Name: name, Status: "inactive", EnvVars: map[string]string{}, WorkerSite: s.Name, WorkerName: wname},
+							OK:              opErr == nil,
+						}
+						if opErr != nil {
+							resp.Error = opErr.Error()
+							resp.Status = "active"
+						}
+						writeJSON(w, resp)
+						return
+					}
+				}
+			}
+		}
 	}
 
 	// Validate service name — built-in or custom
@@ -990,6 +1165,41 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, SiteActionResponse{OK: true})
 		return
 	default:
+		// Handle framework worker actions: worker:{name}:start or worker:{name}:stop
+		if strings.HasPrefix(action, "worker:") {
+			parts := strings.SplitN(action, ":", 3)
+			if len(parts) == 3 && (parts[2] == "start" || parts[2] == "stop") {
+				workerName := parts[1]
+				fwN := site.Framework
+				if fwN == "" {
+					fwN, _ = config.DetectFramework(site.Path)
+				}
+				fw, ok := config.GetFramework(fwN)
+				if !ok || fw.Workers == nil {
+					writeJSON(w, SiteActionResponse{Error: "framework has no workers defined"})
+					return
+				}
+				worker, ok := fw.Workers[workerName]
+				if !ok {
+					writeJSON(w, SiteActionResponse{Error: "worker " + workerName + " not defined for this framework"})
+					return
+				}
+				phpVersion := site.PHPVersion
+				if detected, err := phpPkg.DetectVersion(site.Path); err == nil && detected != "" {
+					phpVersion = detected
+				}
+				if parts[2] == "start" {
+					go cli.WorkerStartForSite(site.Name, site.Path, phpVersion, workerName, worker) //nolint:errcheck
+				} else {
+					if err := cli.WorkerStopForSite(site.Name, workerName); err != nil {
+						writeJSON(w, SiteActionResponse{Error: err.Error()})
+						return
+					}
+				}
+				writeJSON(w, SiteActionResponse{OK: true})
+				return
+			}
+		}
 		http.NotFound(w, r)
 		return
 	}
@@ -1398,6 +1608,17 @@ func handleReverbLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	streamUnitLogs(w, r, "lerd-reverb-"+parts[0])
+}
+
+func handleWorkerLogs(w http.ResponseWriter, r *http.Request) {
+	// path: /api/worker/<sitename>/<workername>/logs
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/worker/"), "/")
+	if len(parts) != 3 || parts[2] != "logs" || !allowedQueueUnit.MatchString(parts[0]) || !allowedQueueUnit.MatchString(parts[1]) {
+		http.NotFound(w, r)
+		return
+	}
+	// unit: lerd-{workerName}-{siteName}
+	streamUnitLogs(w, r, "lerd-"+parts[1]+"-"+parts[0])
 }
 
 func handleStripeLogs(w http.ResponseWriter, r *http.Request) {

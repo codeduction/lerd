@@ -16,6 +16,13 @@ type Site struct {
 	NodeVersion string `yaml:"node_version"`
 	Secured     bool   `yaml:"secured"`
 	Ignored     bool   `yaml:"ignored,omitempty"`
+	Framework   string `yaml:"framework,omitempty"`
+	PublicDir   string `yaml:"public_dir,omitempty"`
+}
+
+// IsLaravel returns true if this site uses the Laravel framework.
+func (s *Site) IsLaravel() bool {
+	return s.Framework == "laravel"
 }
 
 // SiteRegistry holds all registered sites.

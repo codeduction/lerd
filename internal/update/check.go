@@ -37,7 +37,7 @@ func CachedUpdateCheck(currentVersion string) (*UpdateInfo, error) {
 		return nil, nil
 	}
 
-	if !versionGreaterThan(StripV(latest), StripV(currentVersion)) {
+	if !VersionGreaterThan(StripV(latest), StripV(currentVersion)) {
 		return nil, nil
 	}
 
@@ -133,7 +133,7 @@ func extractChangelogSections(changelog, currentVersion, latestVersion string) s
 				continue
 			}
 			sectionVer := rest[:closeBracket]
-			if versionGreaterThan(sectionVer, currentVersion) && !versionGreaterThan(sectionVer, latestVersion) {
+			if VersionGreaterThan(sectionVer, currentVersion) && !VersionGreaterThan(sectionVer, latestVersion) {
 				inSection = true
 			}
 		}
@@ -147,9 +147,9 @@ func extractChangelogSections(changelog, currentVersion, latestVersion string) s
 	return strings.TrimSpace(result.String())
 }
 
-// versionGreaterThan returns true if a > b, comparing "X.Y.Z" version strings
+// VersionGreaterThan returns true if a > b, comparing "X.Y.Z" version strings
 // (without a leading "v") component-by-component as integers.
-func versionGreaterThan(a, b string) bool {
+func VersionGreaterThan(a, b string) bool {
 	aParts := strings.Split(a, ".")
 	bParts := strings.Split(b, ".")
 

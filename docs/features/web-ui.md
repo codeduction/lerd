@@ -23,9 +23,10 @@ Lists all registered projects with their domain, path, PHP version, Node version
 
 - **HTTPS toggle** — enable or disable TLS with one click; updates `APP_URL` in `.env` automatically
 - **PHP / Node dropdowns** — change the version per site; writes `.php-version` / `.node-version` into the project and regenerates the nginx vhost on the fly
-- **Queue toggle** — start or stop the Laravel queue worker for a site; amber when running; click the **logs** link next to the toggle to open the live log drawer for that worker
-- **Schedule toggle** — start or stop the Laravel task scheduler for a site; shows whether `schedule:work` is running with a live log link
-- **Reverb toggle** — start or stop the Laravel Reverb WebSocket server for a site; shows running state with a live log link
+- **Queue toggle** — start or stop the queue worker for a site (available for any framework that defines a `queue` worker); amber when running; click the **logs** link to open the live log drawer
+- **Schedule toggle** — start or stop the task scheduler (available for frameworks with a `schedule` worker); live log link when running
+- **Reverb toggle** — start or stop the Reverb WebSocket server; only shown when the project actually uses Reverb (detected via composer or `.env`)
+- **Framework worker toggles** — any additional workers defined by the site's framework (e.g. Symfony `messenger`, Laravel `horizon`) appear as indigo toggles; each has a live log link when running
 - **Stripe toggle** — start or stop the Stripe webhook listener for a site
 - **Unlink button** — remove a site from nginx without touching the terminal; for parked sites the directory is left on disk (run `lerd link` to re-register it)
 - **Click any row** — opens the live PHP-FPM log drawer at the bottom of the screen
@@ -34,7 +35,7 @@ Lists all registered projects with their domain, path, PHP version, Node version
 
 Shows all available services (MySQL, Redis, PostgreSQL, Meilisearch, MinIO, Mailpit) with their current status. Start or stop any service with one click; each panel shows the correct `.env` connection values with a one-click copy button.
 
-Queue workers, schedule workers, Stripe listeners, and Reverb servers are grouped into collapsible accordions (Queues, Schedules, Stripe, Reverb). Click a group header to expand it and see the individual per-site entries; only one group is open at a time.
+Workers (queue, schedule, reverb, and any custom framework workers), Stripe listeners, and infrastructure services are shown together. Per-site worker services are grouped into collapsible accordions (Queues, Schedules, Reverb, Workers). Click a group header to expand it and see the individual per-site entries; only one group is open at a time.
 
 ## System tab
 

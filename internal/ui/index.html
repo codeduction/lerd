@@ -164,6 +164,9 @@
                 <span x-show="site.stripe_running" class="w-2 h-2 rounded-full shrink-0 bg-violet-400" title="Stripe listener running"></span>
                 <span x-show="site.schedule_running" class="w-2 h-2 rounded-full shrink-0 bg-emerald-400" title="Scheduler running"></span>
                 <span x-show="site.reverb_running" class="w-2 h-2 rounded-full shrink-0 bg-sky-400" title="Reverb running"></span>
+                <template x-for="w in (site.framework_workers || []).filter(w => w.running)" :key="'dot-' + w.name">
+                  <span class="w-2 h-2 rounded-full shrink-0 bg-indigo-400" :title="w.label + ' running'"></span>
+                </template>
               </button>
             </template>
           </div>
@@ -199,6 +202,9 @@
                           <span class="inline-flex items-center gap-1 text-xs font-medium text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
                             <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>stopped
                           </span>
+                        </template>
+                        <template x-if="selectedSite.framework_label">
+                          <span class="inline-flex items-center text-xs font-medium text-lerd-red bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full" x-text="selectedSite.framework_label"></span>
                         </template>
                       </div>
                       <div class="text-xs text-gray-400 font-mono mt-1 flex items-center gap-2">
@@ -297,7 +303,7 @@
                   </div>
 
                   <!-- Queue -->
-                  <div>
+                  <div x-show="selectedSite.has_queue_worker">
                     <div class="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">Queue</div>
                     <div class="flex flex-col items-start gap-1">
                       <div class="flex items-center gap-2">
@@ -349,7 +355,7 @@
                   </div>
 
                   <!-- Schedule -->
-                  <div>
+                  <div x-show="selectedSite.has_schedule_worker">
                     <div class="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">Schedule</div>
                     <div class="flex flex-col items-start gap-1">
                       <div class="flex items-center gap-2">
@@ -399,6 +405,34 @@
                       <div x-show="selectedSite.reverbError" class="text-[10px] text-red-500" x-text="selectedSite.reverbError"></div>
                     </div>
                   </div>
+
+                  <!-- Custom framework workers -->
+                  <template x-for="worker in (selectedSite.framework_workers || [])" :key="'toggle-' + worker.name">
+                    <div>
+                      <div class="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1.5" x-text="worker.label"></div>
+                      <div class="flex flex-col items-start gap-1">
+                        <div class="flex items-center gap-2">
+                          <button
+                            @click="toggleWorker(selectedSite, worker)"
+                            :disabled="worker.loading"
+                            :title="worker.running ? 'Stop ' + worker.label : 'Start ' + worker.label"
+                            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50"
+                            :class="worker.running ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-lerd-muted'"
+                          >
+                            <span
+                              class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200"
+                              :class="worker.running ? 'translate-x-4' : 'translate-x-1'"
+                            ></span>
+                            <svg x-show="worker.loading" class="animate-spin absolute right-[-18px] w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                          </button>
+                        </div>
+                        <div x-show="worker.error" class="text-[10px] text-red-500" x-text="worker.error"></div>
+                      </div>
+                    </div>
+                  </template>
 
                 </div>
 
@@ -490,9 +524,17 @@
                     <template x-if="selectedSite && selectedSite.reverb_running">
                       <button
                         @click="setSiteLogsTab('reverb')"
-                        class="pb-2 text-xs font-medium transition-colors border-b-2"
+                        class="pb-2 mr-5 text-xs font-medium transition-colors border-b-2"
                         :class="siteLogsTab === 'reverb' ? 'border-sky-500 text-sky-600 dark:text-sky-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
                       >Reverb</button>
+                    </template>
+                    <template x-for="worker in (selectedSite && selectedSite.framework_workers || []).filter(w => w.running)" :key="'tab-' + worker.name">
+                      <button
+                        @click="setSiteLogsTab('worker:' + worker.name)"
+                        class="pb-2 mr-5 text-xs font-medium transition-colors border-b-2"
+                        :class="siteLogsTab === 'worker:' + worker.name ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+                        x-text="worker.label"
+                      ></button>
                     </template>
                   </div>
 
@@ -604,6 +646,27 @@
                         <div class="text-gray-400 dark:text-gray-700 italic">Waiting for log output...</div>
                       </template>
                       <template x-for="(line, i) in siteReverbLogs.lines" :key="i">
+                        <div class="whitespace-pre-wrap break-all text-gray-600 dark:text-gray-400" x-text="line"></div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Custom worker log content (shared panel, driven by siteLogsTab) -->
+                  <div x-show="siteLogsTab.startsWith('worker:')">
+                    <div class="flex items-center gap-1 text-[10px] mb-2"
+                      :class="siteWorkerLogs.connected ? 'text-indigo-600 dark:text-indigo-500' : 'text-gray-400 dark:text-gray-600'">
+                      <span class="w-1.5 h-1.5 rounded-full"
+                        :class="siteWorkerLogs.connected ? 'bg-indigo-500 animate-pulse' : 'bg-gray-400 dark:bg-gray-600'"></span>
+                      <span x-text="siteWorkerLogs.connected ? 'live' : 'connecting...'"></span>
+                    </div>
+                    <div
+                      x-ref="siteWorkerLogScroll"
+                      class="max-h-80 overflow-y-auto rounded-lg bg-gray-50 dark:bg-lerd-bg border border-gray-200 dark:border-lerd-border px-4 py-3 font-mono text-[11px] leading-relaxed space-y-0.5"
+                    >
+                      <template x-if="siteWorkerLogs.lines.length === 0">
+                        <div class="text-gray-400 dark:text-gray-700 italic">Waiting for log output...</div>
+                      </template>
+                      <template x-for="(line, i) in siteWorkerLogs.lines" :key="i">
                         <div class="whitespace-pre-wrap break-all text-gray-600 dark:text-gray-400" x-text="line"></div>
                       </template>
                     </div>
@@ -1751,6 +1814,11 @@ function lerdApp() {
       connected: false,
       _source: null,
     },
+    siteWorkerLogs: {
+      lines: [],
+      connected: false,
+      _source: null,
+    },
     siteLogsTab: 'fpm',
 
     applyTheme(t) {
@@ -1790,18 +1858,19 @@ function lerdApp() {
 
     capitalize(s) { return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); },
     coreServices() {
-      return this.services.filter(s => !s.queue_site && !s.schedule_worker_site && !s.stripe_listener_site && !s.reverb_site);
+      return this.services.filter(s => !s.queue_site && !s.schedule_worker_site && !s.stripe_listener_site && !s.reverb_site && !s.worker_site);
     },
     workerGroups() {
       return [
         { key: 'queue',    label: 'Queues',    items: this.services.filter(s => s.queue_site) },
         { key: 'schedule', label: 'Schedules', items: this.services.filter(s => s.schedule_worker_site) },
+        { key: 'workers',  label: 'Workers',   items: this.services.filter(s => s.worker_site) },
         { key: 'stripe',   label: 'Stripe',    items: this.services.filter(s => s.stripe_listener_site) },
         { key: 'reverb',   label: 'Reverb',    items: this.services.filter(s => s.reverb_site) },
       ].filter(g => g.items.length > 0);
     },
     workerSiteName(svc) {
-      return svc.queue_site || svc.schedule_worker_site || svc.stripe_listener_site || svc.reverb_site || svc.name;
+      return svc.queue_site || svc.schedule_worker_site || svc.stripe_listener_site || svc.reverb_site || svc.worker_site || svc.name;
     },
     toggleWorkerGroup(key) {
       this.openWorkerGroup = this.openWorkerGroup === key ? null : key;
@@ -1846,7 +1915,7 @@ function lerdApp() {
         const raw = await res.json();
         this._sitesLoaded = true;
         if (firstLoad) {
-          this.sites = raw.map(s => ({ ...s, tlsLoading: false, tlsError: '', versionLoading: false, queueLoading: false, queueError: '', stripeLoading: false, stripeError: '', scheduleLoading: false, scheduleError: '', reverbLoading: false, reverbError: '', unlinkLoading: false }));
+          this.sites = raw.map(s => ({ ...s, tlsLoading: false, tlsError: '', versionLoading: false, queueLoading: false, queueError: '', stripeLoading: false, stripeError: '', scheduleLoading: false, scheduleError: '', reverbLoading: false, reverbError: '', unlinkLoading: false, framework_workers: (s.framework_workers || []).map(w => ({ ...w, loading: false, error: '' })) }));
         } else {
           raw.forEach(s => {
             const e = this.sites.find(x => x.domain === s.domain);
@@ -1861,9 +1930,24 @@ function lerdApp() {
               e.schedule_running = s.schedule_running;
               e.reverb_running = s.reverb_running;
               e.has_reverb = s.has_reverb;
+              e.has_queue_worker = s.has_queue_worker;
+              e.has_schedule_worker = s.has_schedule_worker;
               e.branch = s.branch;
+              // Merge framework_workers running state, preserving UI state
+              if (s.framework_workers) {
+                if (e.framework_workers) {
+                  s.framework_workers.forEach(sw => {
+                    const ew = e.framework_workers.find(w => w.name === sw.name);
+                    if (ew) { ew.running = sw.running; }
+                    else { e.framework_workers.push({ ...sw, loading: false, error: '' }); }
+                  });
+                  e.framework_workers = e.framework_workers.filter(ew => s.framework_workers.some(sw => sw.name === ew.name));
+                } else {
+                  e.framework_workers = s.framework_workers.map(w => ({ ...w, loading: false, error: '' }));
+                }
+              }
             } else {
-              this.sites.push({ ...s, tlsLoading: false, tlsError: '', versionLoading: false, queueLoading: false, queueError: '', stripeLoading: false, stripeError: '', scheduleLoading: false, scheduleError: '', reverbLoading: false, reverbError: '', unlinkLoading: false });
+              this.sites.push({ ...s, tlsLoading: false, tlsError: '', versionLoading: false, queueLoading: false, queueError: '', stripeLoading: false, stripeError: '', scheduleLoading: false, scheduleError: '', reverbLoading: false, reverbError: '', unlinkLoading: false, framework_workers: (s.framework_workers || []).map(w => ({ ...w, loading: false, error: '' })) });
             }
           });
           this.sites = this.sites.filter(e => raw.some(s => s.domain === e.domain));
@@ -1882,6 +1966,7 @@ function lerdApp() {
       this.closeSiteStripeLogs();
       this.closeSiteScheduleLogs();
       this.closeSiteReverbLogs();
+      this.closeSiteWorkerLogs();
       this.openSiteLogs(site);
     },
 
@@ -1997,6 +2082,58 @@ function lerdApp() {
       this.siteReverbLogs.connected = false;
     },
 
+    openSiteWorkerLogs(site, workerName) {
+      this.closeSiteWorkerLogs();
+      this.siteWorkerLogs.lines = [];
+      const src = new EventSource(`/api/worker/${site.name}/${workerName}/logs`);
+      this.siteWorkerLogs._source = src;
+      src.onopen = () => { this.siteWorkerLogs.connected = true; };
+      src.onerror = () => { this.siteWorkerLogs.connected = false; };
+      src.onmessage = (e) => {
+        this.siteWorkerLogs.lines.push(e.data);
+        if (this.siteWorkerLogs.lines.length > 500) this.siteWorkerLogs.lines.splice(0, this.siteWorkerLogs.lines.length - 500);
+        this.$nextTick(() => {
+          const el = this.$refs.siteWorkerLogScroll;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+    },
+
+    closeSiteWorkerLogs() {
+      if (this.siteWorkerLogs._source) { this.siteWorkerLogs._source.close(); this.siteWorkerLogs._source = null; }
+      this.siteWorkerLogs.connected = false;
+    },
+
+    async toggleWorker(site, worker) {
+      worker.loading = true;
+      worker.error = '';
+      const stopping = worker.running;
+      const action = stopping ? `worker:${worker.name}:stop` : `worker:${worker.name}:start`;
+      try {
+        const res = await fetch(`/api/sites/${site.domain}/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          worker.running = !stopping;
+          if (stopping) {
+            if (this.siteLogsTab === 'worker:' + worker.name) {
+              this.closeSiteWorkerLogs();
+              this.siteLogsTab = 'fpm';
+            }
+          } else {
+            this.siteLogsTab = 'worker:' + worker.name;
+            this.openSiteWorkerLogs(site, worker.name);
+          }
+          await this.loadServices();
+        } else {
+          worker.error = data.error || 'Failed';
+        }
+      } catch (e) {
+        worker.error = e.message || 'Request failed';
+      } finally {
+        worker.loading = false;
+      }
+    },
+
     async toggleStripe(site) {
       site.stripeLoading = true;
       site.stripeError = '';
@@ -2088,10 +2225,12 @@ function lerdApp() {
       this.closeSiteStripeLogs();
       this.closeSiteScheduleLogs();
       this.closeSiteReverbLogs();
+      this.closeSiteWorkerLogs();
       if (tab === 'queue' && s) this.openSiteQueueLogs(s);
       else if (tab === 'stripe' && s) this.openSiteStripeLogs(s);
       else if (tab === 'schedule' && s) this.openSiteScheduleLogs(s);
       else if (tab === 'reverb' && s) this.openSiteReverbLogs(s);
+      else if (tab.startsWith('worker:') && s) this.openSiteWorkerLogs(s, tab.slice(7));
     },
 
     async loadServices() {
@@ -2129,7 +2268,9 @@ function lerdApp() {
             ? `/api/schedule/${svc.schedule_worker_site}/logs`
             : svc.reverb_site
               ? `/api/reverb/${svc.reverb_site}/logs`
-              : `/api/logs/lerd-${svc.name}`;
+              : svc.worker_site
+                ? `/api/worker/${svc.worker_site}/${svc.worker_name}/logs`
+                : `/api/logs/lerd-${svc.name}`;
       const src = new EventSource(url);
       this.svcLogs._source = src;
       src.onopen = () => { this.svcLogs.connected = true; };

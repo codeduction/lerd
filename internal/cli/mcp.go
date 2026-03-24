@@ -207,7 +207,8 @@ This project runs on **lerd**, a Podman-based Laravel development environment fo
 - Services (MySQL, Redis, PostgreSQL, etc.) run as Podman containers via systemd quadlets
 - Custom services (MongoDB, RabbitMQ, …) can be added with ` + bt + `service_add` + bt + ` and managed identically to built-in ones
 - Node.js versions are managed by **fnm** (Fast Node Manager); pin per-project with a ` + bt + `.node-version` + bt + ` file
-- Queue workers run as systemd user services named ` + bt + `lerd-queue-<sitename>` + bt + `
+- Framework workers (queue, schedule, reverb, messenger, etc.) run as systemd user services named ` + bt + `lerd-<worker>-<sitename>` + bt + ` (e.g. ` + bt + `lerd-queue-myapp` + bt + `, ` + bt + `lerd-messenger-myapp` + bt + `)
+- Worker commands are defined per-framework in YAML definitions; Laravel has built-in queue/schedule/reverb workers; custom frameworks can add any workers
 - Git worktrees automatically get a ` + bt + `<branch>.<site>.test` + bt + ` subdomain; ` + bt + `vendor/` + bt + `, ` + bt + `node_modules/` + bt + `, and ` + bt + `.env` + bt + ` are symlinked/copied from the main checkout
 - DNS resolves ` + bt + `*.test` + bt + ` to ` + bt + `127.0.0.1` + bt + `
 
@@ -334,7 +335,7 @@ Toggle Xdebug for a PHP version (restarts the FPM container). Optional ` + bt + 
 ` + bt + `xdebug_status` + bt + ` returns the enabled/disabled state for all installed PHP versions.
 
 ### ` + bt + `queue_start` + bt + ` / ` + bt + `queue_stop` + bt + `
-Start or stop a Laravel queue worker for a site. The worker runs ` + bt + `php artisan queue:work` + bt + ` in the FPM container as a systemd service.
+Start or stop a queue worker for a site. Available for any framework that defines a ` + bt + `queue` + bt + ` worker (Laravel has it built-in). Runs the framework-defined command in the FPM container as a systemd service.
 
 > **Redis queues:** if the project's ` + bt + `.env` + bt + ` has ` + bt + `QUEUE_CONNECTION=redis` + bt + `, lerd will refuse to start the worker unless ` + bt + `lerd-redis` + bt + ` is running. Call ` + bt + `service_start(name: "redis")` + bt + ` first.
 
@@ -345,10 +346,62 @@ Arguments for ` + bt + `queue_start` + bt + `:
 - ` + bt + `timeout` + bt + ` (optional): job timeout in seconds, default ` + bt + `60` + bt + `
 
 ### ` + bt + `reverb_start` + bt + ` / ` + bt + `reverb_stop` + bt + `
-Start or stop the Laravel Reverb WebSocket server for a site. The server runs ` + bt + `php artisan reverb:start` + bt + ` inside the FPM container as a systemd service. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool).
+Start or stop the Reverb WebSocket server for a site. Available for any framework that defines a ` + bt + `reverb` + bt + ` worker. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool).
 
 ### ` + bt + `schedule_start` + bt + ` / ` + bt + `schedule_stop` + bt + `
-Start or stop the Laravel task scheduler for a site. Runs ` + bt + `php artisan schedule:work` + bt + ` inside the FPM container as a systemd service. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool).
+Start or stop the task scheduler for a site. Available for any framework that defines a ` + bt + `schedule` + bt + ` worker. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool).
+
+### ` + bt + `worker_start` + bt + ` / ` + bt + `worker_stop` + bt + `
+Start or stop any named framework worker for a site. Use this for workers that don't have a dedicated shortcut (e.g. ` + bt + `messenger` + bt + ` for Symfony, ` + bt + `horizon` + bt + ` or ` + bt + `pulse` + bt + ` for Laravel). The worker command is taken from the framework definition.
+
+Arguments:
+- ` + bt + `site` + bt + ` (required): site name from ` + bt + `sites` + bt + ` tool
+- ` + bt + `worker` + bt + ` (required): worker name as defined in the framework (e.g. ` + bt + `"messenger"` + bt + `, ` + bt + `"horizon"` + bt + `)
+
+### ` + bt + `worker_list` + bt + `
+List all workers defined for a site's framework, with their running status, command, unit name, and restart policy. Use this to discover available workers before calling ` + bt + `worker_start` + bt + `.
+
+Arguments:
+- ` + bt + `site` + bt + ` (required): site name from ` + bt + `sites` + bt + ` tool
+
+### ` + bt + `framework_list` + bt + `
+List all available framework definitions (Laravel built-in plus any user-defined YAMLs at ` + bt + `~/.config/lerd/frameworks/` + bt + `), including their defined workers. Call this before ` + bt + `framework_add` + bt + ` to see what already exists.
+
+### ` + bt + `framework_add` + bt + `
+Create or update a framework definition. For ` + bt + `laravel` + bt + `, only the ` + bt + `workers` + bt + ` field is accepted (built-in settings are always preserved). For other frameworks, creates a full definition.
+
+Arguments:
+- ` + bt + `name` + bt + ` (required): framework slug (e.g. ` + bt + `"symfony"` + bt + `). Use ` + bt + `"laravel"` + bt + ` to add custom workers to the built-in Laravel definition (e.g. ` + bt + `horizon` + bt + `, ` + bt + `pulse` + bt + `)
+- ` + bt + `label` + bt + ` (optional): display name, e.g. ` + bt + `"Symfony"` + bt + `
+- ` + bt + `public_dir` + bt + ` (optional): document root relative to project (default: ` + bt + `"public"` + bt + `)
+- ` + bt + `detect_files` + bt + ` (optional): array of filenames that signal this framework
+- ` + bt + `detect_packages` + bt + ` (optional): array of Composer packages that signal this framework
+- ` + bt + `env_file` + bt + ` (optional): primary env file path (default: ` + bt + `".env"` + bt + `)
+- ` + bt + `env_format` + bt + ` (optional): ` + bt + `"dotenv"` + bt + ` or ` + bt + `"php-const"` + bt + `
+- ` + bt + `workers` + bt + ` (optional): map of worker name → ` + bt + `{label, command, restart}` + bt + `
+
+Example — add Horizon to Laravel:
+` + "```" + `
+framework_add(name: "laravel", workers: {
+  "horizon": {"label": "Horizon", "command": "php artisan horizon", "restart": "always"}
+})
+` + "```" + `
+
+Example — define a new framework:
+` + "```" + `
+framework_add(
+  name: "wordpress",
+  label: "WordPress",
+  public_dir: ".",
+  detect_files: ["wp-login.php"],
+  workers: {
+    "cron": {"label": "WP Cron", "command": "wp cron event run --due-now --allow-root", "restart": "always"}
+  }
+)
+` + "```" + `
+
+### ` + bt + `framework_remove` + bt + `
+Delete a user-defined framework YAML. For ` + bt + `laravel` + bt + `, removes only the custom worker additions (built-in queue/schedule/reverb remain). Takes ` + bt + `name` + bt + ` (required).
 
 ### ` + bt + `stripe_listen` + bt + ` / ` + bt + `stripe_listen_stop` + bt + `
 Start or stop a Stripe webhook listener for a site using the Stripe CLI container. Reads ` + bt + `STRIPE_SECRET` + bt + ` from the site's ` + bt + `.env` + bt + ` and forwards webhooks to ` + bt + `/stripe/webhook` + bt + ` by default.
@@ -461,6 +514,21 @@ status()    // see which of DNS / nginx / PHP-FPM / watcher is down
 doctor()    // full diagnostic: podman, systemd, DNS, ports, images, config
 ` + "```" + `
 
+**Start a framework worker (Symfony Messenger, Laravel Horizon, etc.):**
+` + "```" + `
+worker_list(site: "myapp")            // see what workers are available and their status
+worker_start(site: "myapp", worker: "messenger")  // start by name
+worker_stop(site: "myapp", worker: "messenger")
+` + "```" + `
+
+**Add a custom worker to Laravel (e.g. Horizon):**
+` + "```" + `
+framework_add(name: "laravel", workers: {
+  "horizon": {"label": "Horizon", "command": "php artisan horizon", "restart": "always"}
+})
+worker_start(site: "myapp", worker: "horizon")
+` + "```" + `
+
 **Work with failed queue jobs:**
 ` + "```" + `
 artisan(args: ["queue:failed"])
@@ -488,14 +556,14 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 - Nginx routes ` + bt + `*.test` + bt + ` domains to the correct PHP-FPM container
 - Services (MySQL, Redis, PostgreSQL, etc.) and custom services run as Podman containers via systemd quadlets
 - Node.js versions are managed by fnm; per-project version is set via a ` + bt + `.node-version` + bt + ` file
-- Queue workers run as systemd user services named ` + bt + `lerd-queue-<sitename>` + bt + `
+- Framework workers (queue, schedule, reverb, messenger, etc.) run as systemd user services named ` + bt + `lerd-<worker>-<sitename>` + bt + `; commands are defined per-framework in YAML definitions
 - Git worktrees automatically get a ` + bt + `<branch>.<site>.test` + bt + ` subdomain; ` + bt + `vendor/` + bt + `, ` + bt + `node_modules/` + bt + `, and ` + bt + `.env` + bt + ` are symlinked/copied from the main checkout
 
 ### Available MCP tools
 
 | Tool | What it does |
 |------|-------------|
-| ` + bt + `sites` + bt + ` | List all registered sites — call this first to find paths and site names |
+| ` + bt + `sites` + bt + ` | List all registered sites with framework and worker status — call this first |
 | ` + bt + `runtime_versions` + bt + ` | List installed PHP and Node.js versions with defaults |
 | ` + bt + `artisan` + bt + ` | Run ` + bt + `php artisan` + bt + ` inside the PHP-FPM container |
 | ` + bt + `composer` + bt + ` | Run ` + bt + `composer` + bt + ` inside the PHP-FPM container |
@@ -513,19 +581,25 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 | ` + bt + `service_stop` + bt + ` | Stop a service |
 | ` + bt + `service_add` + bt + ` | Register a new custom OCI service (MongoDB, RabbitMQ, …) |
 | ` + bt + `service_remove` + bt + ` | Stop and deregister a custom service |
-| ` + bt + `service_env` + bt + ` | Return the recommended ` + bt + `.env` + bt + ` connection variables for a built-in or custom service |
+| ` + bt + `service_env` + bt + ` | Return the recommended ` + bt + `.env` + bt + ` connection variables for a service |
 | ` + bt + `db_export` + bt + ` | Export the project database to a SQL dump file |
-| ` + bt + `queue_start` + bt + ` | Start a queue worker for a site |
-| ` + bt + `queue_stop` + bt + ` | Stop a queue worker |
-| ` + bt + `reverb_start` + bt + ` | Start the Laravel Reverb WebSocket server for a site |
+| ` + bt + `queue_start` + bt + ` | Start the queue worker for a site (any framework with a queue worker) |
+| ` + bt + `queue_stop` + bt + ` | Stop the queue worker |
+| ` + bt + `reverb_start` + bt + ` | Start the Reverb WebSocket server for a site |
 | ` + bt + `reverb_stop` + bt + ` | Stop the Reverb server |
-| ` + bt + `schedule_start` + bt + ` | Start the Laravel task scheduler for a site |
+| ` + bt + `schedule_start` + bt + ` | Start the task scheduler for a site |
 | ` + bt + `schedule_stop` + bt + ` | Stop the task scheduler |
+| ` + bt + `worker_start` + bt + ` | Start any named framework worker (e.g. messenger, horizon, pulse) |
+| ` + bt + `worker_stop` + bt + ` | Stop a named framework worker |
+| ` + bt + `worker_list` + bt + ` | List all workers defined for a site's framework with running status |
+| ` + bt + `framework_list` + bt + ` | List all framework definitions with their workers |
+| ` + bt + `framework_add` + bt + ` | Add or update a framework definition; use ` + bt + `name: "laravel"` + bt + ` to add custom workers to Laravel |
+| ` + bt + `framework_remove` + bt + ` | Remove a user-defined framework; for laravel removes only custom worker additions |
 | ` + bt + `stripe_listen` + bt + ` | Start a Stripe webhook listener for a site |
 | ` + bt + `stripe_listen_stop` + bt + ` | Stop the Stripe webhook listener |
 | ` + bt + `logs` + bt + ` | Fetch container logs — defaults to current site's FPM; optionally specify nginx, service name, PHP version, or site name |
-| ` + bt + `status` + bt + ` | Health snapshot of DNS, nginx, PHP-FPM containers, and the file watcher — call first when a site isn't loading |
-| ` + bt + `doctor` + bt + ` | Full diagnostic: podman, systemd, DNS, ports, PHP images, config, updates — use when the user reports setup issues |
+| ` + bt + `status` + bt + ` | Health snapshot of DNS, nginx, PHP-FPM containers, and the file watcher |
+| ` + bt + `doctor` + bt + ` | Full diagnostic: podman, systemd, DNS, ports, PHP images, config, updates |
 
 ### Key conventions
 
@@ -535,4 +609,6 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 - Default DB credentials: username ` + bt + `root` + bt + `, password ` + bt + `lerd` + bt + `
 - ` + bt + `service_stop` + bt + ` marks the service paused — ` + bt + `lerd start` + bt + ` skips it until explicitly started again
 - ` + bt + `queue_start` + bt + ` requires Redis to be running when ` + bt + `QUEUE_CONNECTION=redis` + bt + `; call ` + bt + `service_start(name: "redis")` + bt + ` first
+- Use ` + bt + `worker_list` + bt + ` first to discover what workers are available for a site before calling ` + bt + `worker_start` + bt + `
+- Worker unit names follow the pattern ` + bt + `lerd-<worker>-<site>` + bt + ` (e.g. ` + bt + `lerd-messenger-myapp` + bt + `)
 `

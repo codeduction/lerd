@@ -43,7 +43,7 @@ Lerd bundles Nginx, PHP-FPM, and optional services (MySQL, Redis, PostgreSQL, Me
 | RAM with 5 projects running | ~200 MB | ~500 MB–1 GB (5× app containers + router) |
 | Requires changes to project files | No | Yes — needs `.ddev/config.yaml` committed |
 | Works on legacy / client repos | Yes — just `lerd link` | Only if you can add ddev config |
-| Framework support | Laravel | Laravel, WordPress, Drupal, and many more |
+| Framework support | Laravel built-in; any PHP framework via YAML definitions | Laravel, WordPress, Drupal, and many more |
 | Defined in code (infra-as-code) | No | Yes |
 | Team parity (all OS) | Linux only | macOS, Windows, Linux |
 

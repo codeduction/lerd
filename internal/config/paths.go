@@ -101,6 +101,11 @@ func CustomServicesDir() string {
 	return filepath.Join(ConfigDir(), "services")
 }
 
+// FrameworksDir returns the directory for user-defined framework YAML files.
+func FrameworksDir() string {
+	return filepath.Join(ConfigDir(), "frameworks")
+}
+
 // UpdateCheckFile returns the path to the cached update-check state file.
 func UpdateCheckFile() string {
 	return filepath.Join(DataDir(), "update-check.json")

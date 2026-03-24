@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/geodro/lerd/internal/config"
-	"github.com/geodro/lerd/internal/laravel"
 	"github.com/geodro/lerd/internal/nginx"
 	nodeDet "github.com/geodro/lerd/internal/node"
 	phpDet "github.com/geodro/lerd/internal/php"
@@ -122,7 +121,7 @@ func runPark(_ *cobra.Command, args []string) error {
 			fmt.Printf("  [WARN] nginx reload: %v\n", err)
 		}
 	} else {
-		fmt.Println("No Laravel projects found in directory.")
+		fmt.Println("No PHP projects found in directory.")
 	}
 
 	return nil
@@ -183,11 +182,20 @@ func siteNameAndDomain(dirName, tld string) (string, string) {
 	return name, name + "." + tld
 }
 
-// RegisterProject registers a single project directory as a lerd site if it is a Laravel
-// project and not already registered. Returns true if newly registered.
+// RegisterProject registers a single project directory as a lerd site if it
+// looks like a PHP project. It detects the framework first; if none matches it
+// falls back to auto-detecting the public directory. Returns true if newly registered.
 func RegisterProject(projectDir string, cfg *config.GlobalConfig) (bool, error) {
-	if !laravel.IsLaravel(projectDir) {
-		return false, nil
+	framework, ok := config.DetectFramework(projectDir)
+	detectedPublicDir := ""
+	if !ok {
+		detectedPublicDir = config.DetectPublicDir(projectDir)
+		// Only register if we're confident it's a PHP project:
+		// either a known public dir was found (has public/index.php) or
+		// the root itself has composer.json / a PHP file.
+		if detectedPublicDir == "." && !looksLikePHPProject(projectDir) {
+			return false, nil
+		}
 	}
 
 	baseName, domain := siteNameAndDomain(filepath.Base(projectDir), cfg.DNS.TLD)
@@ -222,6 +230,8 @@ func RegisterProject(projectDir string, cfg *config.GlobalConfig) (bool, error) 
 		PHPVersion:  phpVersion,
 		NodeVersion: nodeVersion,
 		Secured:     false,
+		Framework:   framework,
+		PublicDir:   detectedPublicDir,
 	}
 
 	if err := config.AddSite(site); err != nil {
@@ -236,8 +246,30 @@ func RegisterProject(projectDir string, cfg *config.GlobalConfig) (bool, error) 
 		fmt.Printf("  [WARN] could not ensure FPM for PHP %s: %v\n", phpVersion, err)
 	}
 
-	fmt.Printf("  + %s -> %s (PHP %s, Node %s)\n", name, domain, phpVersion, nodeVersion)
+	frameworkLabel := framework
+	if frameworkLabel == "" {
+		frameworkLabel = "unknown (public: " + detectedPublicDir + ")"
+	}
+	fmt.Printf("  + %s -> %s (PHP %s, Node %s, Framework: %s)\n", name, domain, phpVersion, nodeVersion, frameworkLabel)
 	return true, nil
+}
+
+// looksLikePHPProject returns true if dir contains composer.json or any .php file
+// at the top level, indicating it is likely a PHP project worth registering.
+func looksLikePHPProject(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "composer.json")); err == nil {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".php") {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureFPMQuadlet builds the PHP image if needed, then writes (or overwrites) the quadlet.

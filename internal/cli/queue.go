@@ -57,6 +57,7 @@ func newQueueStopCmd(use string) *cobra.Command {
 	}
 }
 
+
 func queueSiteName(cwd string) (string, error) {
 	reg, err := config.LoadSites()
 	if err != nil {
@@ -78,6 +79,10 @@ func runQueueStart(queue string, tries, timeout int) error {
 		return err
 	}
 
+	if err := requireFrameworkWorker(cwd, "queue"); err != nil {
+		return err
+	}
+
 	siteName, err := queueSiteName(cwd)
 	if err != nil {
 		return err
@@ -95,6 +100,10 @@ func runQueueStart(queue string, tries, timeout int) error {
 func runQueueStop() error {
 	cwd, err := os.Getwd()
 	if err != nil {
+		return err
+	}
+
+	if err := requireFrameworkWorker(cwd, "queue"); err != nil {
 		return err
 	}
 

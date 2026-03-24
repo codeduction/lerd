@@ -85,6 +85,8 @@ func main() {
 		root.AddCommand(cmd)
 	}
 	root.AddCommand(cli.NewShareCmd())
+	root.AddCommand(cli.NewFrameworkCmd())
+	root.AddCommand(cli.NewWorkerCmd())
 	root.AddCommand(cli.NewSetupCmd())
 	root.AddCommand(cli.NewTrayCmd())
 	root.AddCommand(newDNSCheckCmd())
