@@ -57,6 +57,7 @@ func main() {
 	root.AddCommand(cli.NewServiceCmd())
 	root.AddCommand(cli.NewStatusCmd())
 	root.AddCommand(cli.NewAboutCmd())
+	root.AddCommand(cli.NewManCmd())
 	root.AddCommand(cli.NewDoctorCmd())
 	root.AddCommand(cli.NewLogsCmd())
 	root.AddCommand(cli.NewOpenCmd())
