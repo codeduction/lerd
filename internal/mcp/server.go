@@ -666,6 +666,34 @@ func toolList() []mcpTool {
 				},
 			},
 			mcpTool{
+				Name:        "horizon_start",
+				Description: "Start Laravel Horizon for a registered site as a systemd user service. Horizon runs php artisan horizon inside the PHP-FPM container and replaces the standard queue worker. Only available for sites that have laravel/horizon in composer.json.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
+				Name:        "horizon_stop",
+				Description: "Stop the Laravel Horizon service for a registered site.",
+				InputSchema: mcpSchema{
+					Type: "object",
+					Properties: map[string]mcpProp{
+						"site": {
+							Type:        "string",
+							Description: "Site name as shown by the sites tool",
+						},
+					},
+					Required: []string{"site"},
+				},
+			},
+			mcpTool{
 				Name:        "schedule_start",
 				Description: "Start the Laravel task scheduler (php artisan schedule:work) for a registered site as a systemd user service.",
 				InputSchema: mcpSchema{
@@ -958,6 +986,10 @@ func handleToolCall(params json.RawMessage) (any, *rpcError) {
 		return execReverbStart(args)
 	case "reverb_stop":
 		return execReverbStop(args)
+	case "horizon_start":
+		return execHorizonStart(args)
+	case "horizon_stop":
+		return execHorizonStop(args)
 	case "schedule_start":
 		return execScheduleStart(args)
 	case "schedule_stop":
@@ -1391,6 +1423,73 @@ func execReverbStop(args map[string]any) (any, *rpcError) {
 	}
 	_ = podman.DaemonReload()
 	return toolOK("Reverb stopped for " + siteName), nil
+}
+
+func execHorizonStart(args map[string]any) (any, *rpcError) {
+	siteName := strArg(args, "site")
+	if siteName == "" {
+		return toolErr("site is required"), nil
+	}
+	site, err := config.FindSite(siteName)
+	if err != nil {
+		return toolErr("site not found: " + siteName), nil
+	}
+	// Check composer.json for laravel/horizon
+	composerData, readErr := os.ReadFile(filepath.Join(site.Path, "composer.json"))
+	if readErr != nil || !strings.Contains(string(composerData), `"laravel/horizon"`) {
+		return toolErr("laravel/horizon is not installed in " + siteName), nil
+	}
+	phpVersion := site.PHPVersion
+	if detected, err := phpDet.DetectVersion(site.Path); err == nil && detected != "" {
+		phpVersion = detected
+	}
+	versionShort := strings.ReplaceAll(phpVersion, ".", "")
+	fpmUnit := "lerd-php" + versionShort + "-fpm"
+	container := "lerd-php" + versionShort + "-fpm"
+	unitName := "lerd-horizon-" + siteName
+
+	unit := fmt.Sprintf(`[Unit]
+Description=Lerd Horizon (%s)
+After=network.target %s.service
+BindsTo=%s.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+ExecStart=podman exec -w %s %s php artisan horizon
+
+[Install]
+WantedBy=default.target
+`, siteName, fpmUnit, fpmUnit, site.Path, container)
+
+	if err := lerdSystemd.WriteService(unitName, unit); err != nil {
+		return toolErr("writing service unit: " + err.Error()), nil
+	}
+	if err := podman.DaemonReload(); err != nil {
+		return toolErr("daemon-reload: " + err.Error()), nil
+	}
+	_ = lerdSystemd.EnableService(unitName)
+	if err := lerdSystemd.StartService(unitName); err != nil {
+		return toolErr("starting horizon: " + err.Error()), nil
+	}
+	return toolOK(fmt.Sprintf("Horizon started for %s\nLogs: journalctl --user -u %s -f", siteName, unitName)), nil
+}
+
+func execHorizonStop(args map[string]any) (any, *rpcError) {
+	siteName := strArg(args, "site")
+	if siteName == "" {
+		return toolErr("site is required"), nil
+	}
+	unitName := "lerd-horizon-" + siteName
+	unitFile := filepath.Join(config.SystemdUserDir(), unitName+".service")
+	_ = lerdSystemd.DisableService(unitName)
+	_ = podman.StopUnit(unitName)
+	if err := os.Remove(unitFile); err != nil && !os.IsNotExist(err) {
+		return toolErr("removing unit file: " + err.Error()), nil
+	}
+	_ = podman.DaemonReload()
+	return toolOK("Horizon stopped for " + siteName), nil
 }
 
 func execScheduleStart(args map[string]any) (any, *rpcError) {

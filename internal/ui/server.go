@@ -107,6 +107,7 @@ func Start(currentVersion string) error {
 	mux.HandleFunc("/api/sites/", withCORS(handleSiteAction))
 	mux.HandleFunc("/api/logs/", withCORS(handleLogs))
 	mux.HandleFunc("/api/queue/", withCORS(handleQueueLogs))
+	mux.HandleFunc("/api/horizon/", withCORS(handleHorizonLogs))
 	mux.HandleFunc("/api/stripe/", withCORS(handleStripeLogs))
 	mux.HandleFunc("/api/schedule/", withCORS(handleScheduleLogs))
 	mux.HandleFunc("/api/reverb/", withCORS(handleReverbLogs))
@@ -285,6 +286,8 @@ type SiteResponse struct {
 	ScheduleRunning   bool               `json:"schedule_running"`
 	ReverbRunning     bool               `json:"reverb_running"`
 	HasReverb         bool               `json:"has_reverb"`
+	HasHorizon        bool               `json:"has_horizon"`
+	HorizonRunning    bool               `json:"horizon_running"`
 	HasQueueWorker    bool               `json:"has_queue_worker"`
 	HasScheduleWorker bool               `json:"has_schedule_worker"`
 	FrameworkWorkers  []WorkerStatus     `json:"framework_workers,omitempty"`
@@ -378,6 +381,15 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 			hasReverb = cli.SiteUsesReverb(s.Path)
 		}
 
+		// Horizon: auto-detected from composer.json; replaces the queue toggle.
+		var horizonStatus string
+		var hasHorizon bool
+		if isLaravel && cli.SiteHasHorizon(s.Path) {
+			hasHorizon = true
+			horizonStatus, _ = podman.UnitStatus("lerd-horizon-" + s.Name)
+			hasQueueWorker = false // Horizon manages queues; suppress the plain queue toggle
+		}
+
 		// Collect custom framework workers (non-builtin names)
 		var fwWorkers []WorkerStatus
 		if hasFw && fw.Workers != nil {
@@ -434,6 +446,8 @@ func handleSites(w http.ResponseWriter, _ *http.Request) {
 			ScheduleRunning:   scheduleStatus == "active",
 			ReverbRunning:     reverbStatus == "active",
 			HasReverb:         hasReverb,
+			HasHorizon:        hasHorizon,
+			HorizonRunning:    horizonStatus == "active",
 			HasQueueWorker:    hasQueueWorker,
 			HasScheduleWorker: hasScheduleWorker,
 			FrameworkWorkers:  fwWorkers,
@@ -1125,6 +1139,21 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, SiteActionResponse{OK: true})
 		return
+	case "horizon:start":
+		phpVersion := site.PHPVersion
+		if detected, err := phpPkg.DetectVersion(site.Path); err == nil && detected != "" {
+			phpVersion = detected
+		}
+		go cli.HorizonStartForSite(site.Name, site.Path, phpVersion) //nolint:errcheck
+		writeJSON(w, SiteActionResponse{OK: true})
+		return
+	case "horizon:stop":
+		if err := cli.HorizonStopForSite(site.Name); err != nil {
+			writeJSON(w, SiteActionResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(w, SiteActionResponse{OK: true})
+		return
 	case "queue:start":
 		phpVersion := site.PHPVersion
 		if detected, err := phpPkg.DetectVersion(site.Path); err == nil && detected != "" {
@@ -1431,6 +1460,16 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 var allowedQueueUnit = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+func handleHorizonLogs(w http.ResponseWriter, r *http.Request) {
+	// path: /api/horizon/<sitename>/logs
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/horizon/"), "/")
+	if len(parts) != 2 || parts[1] != "logs" || !allowedQueueUnit.MatchString(parts[0]) {
+		http.NotFound(w, r)
+		return
+	}
+	streamUnitLogs(w, r, "lerd-horizon-"+parts[0])
+}
 
 func handleQueueLogs(w http.ResponseWriter, r *http.Request) {
 	// path: /api/queue/<sitename>/logs

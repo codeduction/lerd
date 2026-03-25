@@ -208,7 +208,7 @@ func startServicesForSiteNoticed(sitePath, siteName string) {
 func collectRunningWorkers(site *config.Site) []string {
 	var active []string
 
-	for _, w := range []string{"queue", "schedule", "reverb"} {
+	for _, w := range []string{"queue", "schedule", "reverb", "horizon"} {
 		if lerdSystemd.IsServiceActive("lerd-" + w + "-" + site.Name) {
 			active = append(active, w)
 		}
@@ -247,6 +247,8 @@ func stopWorkerByName(site *config.Site, workerName string) {
 		ScheduleStopForSite(site.Name) //nolint:errcheck
 	case "reverb":
 		ReverbStopForSite(site.Name) //nolint:errcheck
+	case "horizon":
+		HorizonStopForSite(site.Name) //nolint:errcheck
 	case "stripe":
 		StripeStopForSite(site.Name) //nolint:errcheck
 	default:
@@ -263,6 +265,8 @@ func resumeWorkerByName(site *config.Site, workerName, phpVersion string) {
 		ScheduleStartForSite(site.Name, site.Path, phpVersion) //nolint:errcheck
 	case "reverb":
 		ReverbStartForSite(site.Name, site.Path, phpVersion) //nolint:errcheck
+	case "horizon":
+		HorizonStartForSite(site.Name, site.Path, phpVersion) //nolint:errcheck
 	case "stripe":
 		scheme := "http"
 		if site.Secured {

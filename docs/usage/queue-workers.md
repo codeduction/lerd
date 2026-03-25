@@ -13,6 +13,29 @@ Lerd can run framework-defined workers as persistent systemd user services. Work
 
 Works for any framework that defines a `queue` worker. Laravel has it built-in (`php artisan queue:work`).
 
+---
+
+## Laravel Horizon
+
+If `laravel/horizon` is present in `composer.json`, lerd detects it automatically and switches to Horizon mode:
+
+- The queue toggle in the web UI is replaced by a **Horizon** toggle
+- Use `lerd horizon:start` / `lerd horizon:stop` instead of `queue:start` / `queue:stop`
+
+| Command | Description |
+|---|---|
+| `lerd horizon:start` | Start Horizon for the current project as a systemd service |
+| `lerd horizon:stop` | Stop Horizon for the current project |
+| `lerd horizon start` | Same as `horizon:start` (subcommand form) |
+| `lerd horizon stop` | Same as `horizon:stop` (subcommand form) |
+
+Horizon manages its own worker pools via `config/horizon.php` and does not accept `--queue`, `--tries`, or `--timeout` flags — those are configured in the Horizon config file instead.
+
+The systemd unit is named `lerd-horizon-{sitename}`. Logs:
+```bash
+journalctl --user -u lerd-horizon-my-app -f
+```
+
 ## Generic workers (`lerd worker`)
 
 Use this for any other framework-defined worker:
@@ -30,11 +53,7 @@ lerd worker start messenger
 # Logs: journalctl --user -u lerd-messenger-myapp -f
 ```
 
-Workers are defined in framework YAML definitions at `~/.config/lerd/frameworks/`. To add a custom worker to Laravel (e.g. Horizon):
-```bash
-lerd framework add laravel --from-file horizon.yaml
-# or via the UI toggle in the Sites panel
-```
+Workers are defined in framework YAML definitions at `~/.config/lerd/frameworks/`. See [Frameworks](frameworks.md) for how to add custom workers to any framework.
 
 ---
 
@@ -78,4 +97,9 @@ The lerd watcher daemon monitors `.env`, `composer.json`, `composer.lock`, and `
 
 ## Web UI control
 
-Queue workers are controllable from the **Sites tab** in the web UI. The amber toggle starts or stops the worker. When a worker is running, a **Queue** log tab appears in the site detail panel alongside PHP-FPM. The amber dot next to the site in the sidebar indicates the worker is active.
+Queue workers and Horizon are controllable from the **Sites tab** in the web UI:
+
+- For projects **without** Horizon: an amber **Queue** toggle starts or stops the queue worker.
+- For projects **with** `laravel/horizon` installed: the Queue toggle is replaced by a **Horizon** toggle (auto-detected from `composer.json`).
+
+When a worker is running, a log tab (**Queue** or **Horizon**) appears in the site detail panel alongside PHP-FPM. The amber dot next to the site in the sidebar indicates a worker is active.

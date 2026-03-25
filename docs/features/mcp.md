@@ -64,11 +64,13 @@ Once the MCP server is connected, your AI assistant has access to:
 | `db_export` | Export a database to a SQL dump file (defaults to site DB from `.env`) |
 | `queue_start` | Start the queue worker for a site (any framework with a `queue` worker) |
 | `queue_stop` | Stop the queue worker |
+| `horizon_start` | Start Laravel Horizon for a site (use instead of `queue_start` when `laravel/horizon` is installed) |
+| `horizon_stop` | Stop Laravel Horizon |
 | `reverb_start` | Start the Reverb WebSocket server for a site |
 | `reverb_stop` | Stop the Reverb server |
 | `schedule_start` | Start the task scheduler for a site |
 | `schedule_stop` | Stop the task scheduler |
-| `worker_start` | Start any named framework worker (e.g. `messenger`, `horizon`, `pulse`) |
+| `worker_start` | Start any named framework worker (e.g. `messenger`, `pulse`) |
 | `worker_stop` | Stop a named framework worker |
 | `worker_list` | List all workers defined for a site's framework with running status |
 | `framework_list` | List all framework definitions including their workers |

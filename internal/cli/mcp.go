@@ -379,6 +379,11 @@ Arguments for ` + bt + `queue_start` + bt + `:
 - ` + bt + `tries` + bt + ` (optional): max job attempts, default ` + bt + `3` + bt + `
 - ` + bt + `timeout` + bt + ` (optional): job timeout in seconds, default ` + bt + `60` + bt + `
 
+### ` + bt + `horizon_start` + bt + ` / ` + bt + `horizon_stop` + bt + `
+Start or stop Laravel Horizon for a site. Horizon is a queue manager that replaces ` + bt + `queue:work` + bt + ` — use ` + bt + `horizon_start` + bt + ` instead of ` + bt + `queue_start` + bt + ` for projects that have ` + bt + `laravel/horizon` + bt + ` in ` + bt + `composer.json` + bt + `. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool). Returns an error if ` + bt + `laravel/horizon` + bt + ` is not installed.
+
+> **Horizon vs queue worker:** The ` + bt + `sites` + bt + ` tool returns ` + bt + `has_horizon: true` + bt + ` when a site has Horizon installed. In that case prefer ` + bt + `horizon_start` + bt + ` over ` + bt + `queue_start` + bt + `.
+
 ### ` + bt + `reverb_start` + bt + ` / ` + bt + `reverb_stop` + bt + `
 Start or stop the Reverb WebSocket server for a site. Available for any framework that defines a ` + bt + `reverb` + bt + ` worker. Takes ` + bt + `site` + bt + ` (required, site name from ` + bt + `sites` + bt + ` tool).
 
@@ -621,7 +626,7 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 - Nginx routes ` + bt + `*.test` + bt + ` domains to the correct PHP-FPM container
 - Services (MySQL, Redis, PostgreSQL, etc.) and custom services run as Podman containers via systemd quadlets
 - Node.js versions are managed by fnm; per-project version is set via a ` + bt + `.node-version` + bt + ` file
-- Framework workers (queue, schedule, reverb, messenger, etc.) run as systemd user services named ` + bt + `lerd-<worker>-<sitename>` + bt + `; commands are defined per-framework in YAML definitions
+- Framework workers (queue, schedule, reverb, horizon, messenger, etc.) run as systemd user services named ` + bt + `lerd-<worker>-<sitename>` + bt + `; commands are defined per-framework in YAML definitions; Laravel Horizon is auto-detected from ` + bt + `composer.json` + bt + ` and replaces the queue toggle when installed
 - Git worktrees automatically get a ` + bt + `<branch>.<site>.test` + bt + ` subdomain; ` + bt + `vendor/` + bt + `, ` + bt + `node_modules/` + bt + `, and ` + bt + `.env` + bt + ` are symlinked/copied from the main checkout
 
 ### Available MCP tools
@@ -651,11 +656,13 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 | ` + bt + `db_export` + bt + ` | Export a database to a SQL dump file (defaults to site DB from ` + bt + `.env` + bt + `) |
 | ` + bt + `queue_start` + bt + ` | Start the queue worker for a site (any framework with a queue worker) |
 | ` + bt + `queue_stop` + bt + ` | Stop the queue worker |
+| ` + bt + `horizon_start` + bt + ` | Start Laravel Horizon for a site (use instead of queue_start when laravel/horizon is installed) |
+| ` + bt + `horizon_stop` + bt + ` | Stop Laravel Horizon |
 | ` + bt + `reverb_start` + bt + ` | Start the Reverb WebSocket server for a site |
 | ` + bt + `reverb_stop` + bt + ` | Stop the Reverb server |
 | ` + bt + `schedule_start` + bt + ` | Start the task scheduler for a site |
 | ` + bt + `schedule_stop` + bt + ` | Stop the task scheduler |
-| ` + bt + `worker_start` + bt + ` | Start any named framework worker (e.g. messenger, horizon, pulse) |
+| ` + bt + `worker_start` + bt + ` | Start any named framework worker (e.g. messenger, pulse) |
 | ` + bt + `worker_stop` + bt + ` | Stop a named framework worker |
 | ` + bt + `worker_list` + bt + ` | List all workers defined for a site's framework with running status |
 | ` + bt + `framework_list` + bt + ` | List all framework definitions with their workers |
@@ -679,8 +686,9 @@ This project runs on **lerd**, a Podman-based Laravel development environment. T
 - Default DB credentials: username ` + bt + `root` + bt + `, password ` + bt + `lerd` + bt + `
 - ` + bt + `service_stop` + bt + ` marks the service paused — ` + bt + `lerd start` + bt + ` skips it until explicitly started again
 - ` + bt + `queue_start` + bt + ` requires Redis to be running when ` + bt + `QUEUE_CONNECTION=redis` + bt + `; call ` + bt + `service_start(name: "redis")` + bt + ` first
+- If ` + bt + `sites` + bt + ` returns ` + bt + `has_horizon: true` + bt + ` for a site, use ` + bt + `horizon_start` + bt + ` / ` + bt + `horizon_stop` + bt + ` instead of ` + bt + `queue_start` + bt + ` / ` + bt + `queue_stop` + bt + ` — Horizon manages queues and they are mutually exclusive
 - Use ` + bt + `worker_list` + bt + ` first to discover what workers are available for a site before calling ` + bt + `worker_start` + bt + `
-- Worker unit names follow the pattern ` + bt + `lerd-<worker>-<site>` + bt + ` (e.g. ` + bt + `lerd-messenger-myapp` + bt + `)
+- Worker unit names follow the pattern ` + bt + `lerd-<worker>-<site>` + bt + ` (e.g. ` + bt + `lerd-messenger-myapp` + bt + `, ` + bt + `lerd-horizon-myapp` + bt + `)
 - ` + bt + `site_pause` + bt + ` / ` + bt + `site_unpause` + bt + ` free up resources for sites not in active use without unlinking them; paused state persists across restarts
 - ` + bt + `service_pin` + bt + ` keeps a service always running regardless of which sites are active; use for shared services like MySQL or Redis
 - ` + bt + `service_add` + bt + ` supports ` + bt + `depends_on` + bt + ` (array of service names): starting a dependency auto-starts the dependent service; stopping a dependency cascade-stops the dependent first; starting the dependent ensures dependencies start first

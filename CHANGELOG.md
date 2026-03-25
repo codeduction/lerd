@@ -7,9 +7,11 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.0.0] — 2026-03-25
 
 ### Added
+
+- **Laravel Horizon support** — lerd auto-detects `laravel/horizon` in `composer.json` and provides dedicated `lerd horizon:start` / `lerd horizon:stop` commands that run `php artisan horizon` as a persistent systemd user service (`lerd-horizon-{site}`). When Horizon is detected, the **Queue** toggle in the web UI is replaced by a **Horizon** toggle, and a **Horizon** log tab appears in the site detail panel while Horizon is running. Pause/unpause correctly stops and resumes the Horizon service alongside other workers. MCP tools `horizon_start` and `horizon_stop` provide the same control to AI assistants.
 
 - **Service dependencies (`depends_on`)** — custom services can now declare which services they depend on. Starting a service with dependencies starts those dependencies first; starting a dependency automatically starts any services that depend on it; stopping a dependency cascade-stops its dependents first. Declare via the `depends_on` YAML field, the `--depends-on` flag on `lerd service add`, or the `depends_on` parameter in the `service_add` MCP tool.
 

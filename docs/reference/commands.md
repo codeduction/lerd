@@ -110,6 +110,15 @@
 | `lerd queue:start` | Start a queue worker for the current project |
 | `lerd queue:stop` | Stop the queue worker for the current project |
 
+## Horizon
+
+For projects that use `laravel/horizon` — lerd detects it automatically from `composer.json`.
+
+| Command | Description |
+|---|---|
+| `lerd horizon:start` | Start Laravel Horizon for the current project as a persistent background service |
+| `lerd horizon:stop` | Stop Horizon |
+
 ## Reverb
 
 | Command | Description |
