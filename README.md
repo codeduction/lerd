@@ -1,6 +1,6 @@
 # Lerd
 
-**Laravel Herd for Linux** — a Podman-native local development environment for PHP projects.
+**A Herd-like local PHP development environment for Linux** — Podman-native, rootless, zero system dependencies.
 
 Lerd bundles Nginx, PHP-FPM, and optional services (MySQL, Redis, PostgreSQL, and more) as rootless Podman containers, giving you automatic `.test` domain routing, per-project PHP/Node version isolation, and one-command TLS — all without touching your system's PHP or web server. Laravel-first, with built-in support for Symfony, WordPress, and any PHP framework via YAML definitions.
 
