@@ -265,6 +265,52 @@ server {
 	return nil
 }
 
+// GeneratePausedWorktreeVhost writes a paused nginx vhost for a worktree domain.
+// certDomain is the parent site's domain whose cert files back the wildcard.
+func GeneratePausedWorktreeVhost(domain, certDomain, pausedDir string, secured bool) error {
+	if err := os.MkdirAll(config.NginxConfD(), 0755); err != nil {
+		return err
+	}
+
+	htmlFile := "/" + domain + ".html"
+
+	var conf string
+	if secured {
+		conf = fmt.Sprintf(`server {
+    listen 80;
+    server_name %s;
+    return 302 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name %s;
+    ssl_certificate /etc/nginx/certs/%s.crt;
+    ssl_certificate_key /etc/nginx/certs/%s.key;
+    root %s;
+    location / {
+        try_files %s =503;
+        default_type text/html;
+    }
+}
+`, domain, domain, certDomain, certDomain, pausedDir, htmlFile)
+	} else {
+		conf = fmt.Sprintf(`server {
+    listen 80;
+    server_name %s;
+    root %s;
+    location / {
+        try_files %s =503;
+        default_type text/html;
+    }
+}
+`, domain, pausedDir, htmlFile)
+	}
+
+	confPath := filepath.Join(config.NginxConfD(), domain+".conf")
+	return os.WriteFile(confPath, []byte(conf), 0644)
+}
+
 // RemoveVhost deletes the vhost config files for the given domain.
 func RemoveVhost(domain string) error {
 	confD := config.NginxConfD()

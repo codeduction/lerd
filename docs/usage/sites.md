@@ -95,6 +95,7 @@ Commands that benefit from this auto-start:
 | `php artisan <args>` / `lerd artisan <args>` | Any artisan command |
 | `php <args>` / `lerd php <args>` | Any PHP script |
 | `composer <args>` | Composer via the lerd shim |
+| `lerd shell` | Opens an interactive shell in the PHP-FPM container |
 | `lerd db:import` | Imports a SQL dump |
 | `lerd db:export` | Exports a database |
 | `lerd db:shell` | Opens an interactive DB shell |

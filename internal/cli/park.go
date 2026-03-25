@@ -79,6 +79,13 @@ func runPark(_ *cobra.Command, args []string) error {
 		return err
 	}
 
+	// If the target directory is itself a framework project, refuse to park it.
+	if _, ok := config.DetectFramework(absDir); ok {
+		fmt.Printf("'%s' looks like a framework project, not a directory of projects.\n", absDir)
+		fmt.Printf("Run 'lerd link' from that directory instead.\n")
+		return nil
+	}
+
 	fmt.Printf("Parking directory: %s\n", absDir)
 
 	// Add to parked directories in global config
@@ -186,6 +193,14 @@ func siteNameAndDomain(dirName, tld string) (string, string) {
 // looks like a PHP project. It detects the framework first; if none matches it
 // falls back to auto-detecting the public directory. Returns true if newly registered.
 func RegisterProject(projectDir string, cfg *config.GlobalConfig) (bool, error) {
+	// Don't register a directory that lives inside an existing framework project.
+	// This prevents Laravel subdirs (app/, vendor/, public/, etc.) from being
+	// registered as sites when a project root is accidentally used as a park dir.
+	if _, ok := config.DetectFramework(filepath.Dir(projectDir)); ok {
+		fmt.Printf("  [WARN] skipping %s — looks like a subdirectory of a framework project.\n         Run 'lerd link' from %s instead.\n", projectDir, filepath.Dir(projectDir))
+		return false, nil
+	}
+
 	framework, ok := config.DetectFramework(projectDir)
 	detectedPublicDir := ""
 	if !ok {

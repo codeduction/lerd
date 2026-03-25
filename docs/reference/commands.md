@@ -161,6 +161,7 @@ For projects that use `laravel/horizon` — lerd detects it automatically from `
 | Command | Description |
 |---|---|
 | `lerd artisan [args...]` | Run `php artisan` inside the project's PHP-FPM container |
+| `lerd shell` | Open an interactive shell inside the project's PHP-FPM container |
 
 ## AI integration
 

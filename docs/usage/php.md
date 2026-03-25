@@ -106,6 +106,24 @@ systemctl --user restart lerd-php84-fpm
 
 The file is created automatically with commented-out examples when lerd first sets up the PHP version.
 
+---
+
+## PHP shell
+
+`lerd shell` opens an interactive `sh` session inside the PHP-FPM container for the current project:
+
+```bash
+lerd shell
+```
+
+The PHP version is resolved the same way as every other lerd command (`.php-version`, `composer.json`, global default). The shell's working directory is set to the project root.
+
+If the container is not running, lerd prints the `systemctl` command needed to start it rather than silently failing.
+
+If the site is paused, any services referenced in `.env` (MySQL, Redis, etc.) are started automatically before the shell opens — the site itself stays paused.
+
+---
+
 ### Composer.json detection
 
 When you run `lerd park` or `lerd link`, Lerd reads `composer.json` and warns if any `ext-*` requirements are not covered by the bundled or installed extension set:

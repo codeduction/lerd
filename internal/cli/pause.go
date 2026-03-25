@@ -10,6 +10,7 @@ import (
 	"text/template"
 
 	"github.com/geodro/lerd/internal/config"
+	gitpkg "github.com/geodro/lerd/internal/git"
 	"github.com/geodro/lerd/internal/nginx"
 	phpDet "github.com/geodro/lerd/internal/php"
 	lerdSystemd "github.com/geodro/lerd/internal/systemd"
@@ -81,6 +82,8 @@ func PauseSite(name string) error {
 		return fmt.Errorf("updating registry: %w", err)
 	}
 
+	pauseWorktrees(site)
+
 	if err := nginx.Reload(); err != nil {
 		fmt.Printf("[WARN] nginx reload: %v\n", err)
 	}
@@ -127,6 +130,8 @@ func UnpauseSite(name string) error {
 			return fmt.Errorf("generating vhost: %w", err)
 		}
 	}
+
+	unpauseWorktrees(site, phpVersion)
 
 	if err := nginx.Reload(); err != nil {
 		fmt.Printf("[WARN] nginx reload: %v\n", err)
@@ -362,7 +367,7 @@ var pausedPageTmpl = template.Must(template.New("paused").Parse(`<!DOCTYPE html>
       status.textContent = '';
       status.className = 'status';
       try {
-        const r = await fetch('http://127.0.0.1:7073/api/sites/{{.Domain}}/unpause', { method: 'POST' });
+        const r = await fetch('http://127.0.0.1:7073/api/sites/{{.ResumeDomain}}/unpause', { method: 'POST' });
         const data = await r.json();
         if (data.ok) {
           status.textContent = 'Resumed! Redirecting\u2026';
@@ -383,9 +388,10 @@ var pausedPageTmpl = template.Must(template.New("paused").Parse(`<!DOCTYPE html>
 `))
 
 type pausedPageData struct {
-	Name   string
-	Domain string
-	Scheme string
+	Name         string
+	Domain       string
+	ResumeDomain string // domain used in the API unpause call (parent site for worktrees)
+	Scheme       string
 }
 
 // writePausedHTML renders and writes the landing page HTML for a paused site.
@@ -401,13 +407,81 @@ func writePausedHTML(site *config.Site) error {
 
 	var buf bytes.Buffer
 	if err := pausedPageTmpl.Execute(&buf, pausedPageData{
-		Name:   site.Name,
-		Domain: site.Domain,
-		Scheme: scheme,
+		Name:         site.Name,
+		Domain:       site.Domain,
+		ResumeDomain: site.Domain,
+		Scheme:       scheme,
 	}); err != nil {
 		return err
 	}
 
 	htmlPath := filepath.Join(config.PausedDir(), site.Domain+".html")
+	return os.WriteFile(htmlPath, buf.Bytes(), 0644)
+}
+
+// pauseWorktrees generates paused HTML and nginx vhosts for every worktree of
+// a site that is being paused. The resume button on each worktree page unpauses
+// the parent site (which restores all worktree vhosts as well).
+func pauseWorktrees(site *config.Site) {
+	worktrees, err := gitpkg.DetectWorktrees(site.Path, site.Domain)
+	if err != nil || len(worktrees) == 0 {
+		return
+	}
+	for _, wt := range worktrees {
+		if err := writePausedWorktreeHTML(wt, site); err != nil {
+			fmt.Printf("  [WARN] paused page for worktree %s: %v\n", wt.Domain, err)
+			continue
+		}
+		if err := nginx.GeneratePausedWorktreeVhost(wt.Domain, site.Domain, config.PausedDir(), site.Secured); err != nil {
+			fmt.Printf("  [WARN] paused vhost for worktree %s: %v\n", wt.Domain, err)
+		}
+	}
+}
+
+// unpauseWorktrees restores the normal nginx vhosts for every worktree of a
+// site that has just been unpaused and removes their paused HTML files.
+func unpauseWorktrees(site *config.Site, phpVersion string) {
+	worktrees, err := gitpkg.DetectWorktrees(site.Path, site.Domain)
+	if err != nil || len(worktrees) == 0 {
+		return
+	}
+	for _, wt := range worktrees {
+		var vhostErr error
+		if site.Secured {
+			vhostErr = nginx.GenerateWorktreeSSLVhost(wt.Domain, wt.Path, phpVersion, site.Domain)
+		} else {
+			vhostErr = nginx.GenerateWorktreeVhost(wt.Domain, wt.Path, phpVersion)
+		}
+		if vhostErr != nil {
+			fmt.Printf("  [WARN] restoring worktree vhost %s: %v\n", wt.Domain, vhostErr)
+		}
+		_ = os.Remove(filepath.Join(config.PausedDir(), wt.Domain+".html"))
+	}
+}
+
+// writePausedWorktreeHTML renders the paused landing page for a worktree checkout.
+// The resume button targets the parent site's domain so that unpausing restores
+// all worktree vhosts at once.
+func writePausedWorktreeHTML(wt gitpkg.Worktree, parent *config.Site) error {
+	if err := os.MkdirAll(config.PausedDir(), 0755); err != nil {
+		return err
+	}
+
+	scheme := "http"
+	if parent.Secured {
+		scheme = "https"
+	}
+
+	var buf bytes.Buffer
+	if err := pausedPageTmpl.Execute(&buf, pausedPageData{
+		Name:         wt.Branch,
+		Domain:       wt.Domain,
+		ResumeDomain: parent.Domain,
+		Scheme:       scheme,
+	}); err != nil {
+		return err
+	}
+
+	htmlPath := filepath.Join(config.PausedDir(), wt.Domain+".html")
 	return os.WriteFile(htmlPath, buf.Bytes(), 0644)
 }

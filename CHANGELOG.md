@@ -7,6 +7,21 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-03-25
+
+### Added
+
+- **`lerd shell`** — opens an interactive `sh` session inside the project's PHP-FPM container. The PHP version is resolved the same way as every other lerd command (`.php-version`, `composer.json`, global default). The working directory is set to the site root. If the site is paused, any services referenced in `.env` are started automatically before the shell opens.
+- **Shell completions auto-installed on `lerd install`** — fish completions are written to `~/.config/fish/completions/lerd.fish`; zsh completions to `~/.zfunc/_lerd` with the required `fpath` and `compinit` lines appended to `.zshrc`; bash completions to `~/.local/share/bash-completion/completions/lerd`.
+- **Pause/unpause propagates to git worktrees** — when a site is paused, all its worktree checkouts also receive a paused nginx vhost with a **Resume** button. The button targets the parent site so clicking it unpauses both the parent and all worktrees at once. Unpausing restores all worktree vhosts and removes the paused HTML files.
+
+### Fixed
+
+- **`lerd park` refuses to park a framework project root** — if the target directory is itself a Laravel/framework project, lerd now prints a helpful message and suggests `lerd link` instead of silently misbehaving.
+- **`lerd park` no longer registers framework subdirectories as sites** — when a project root is accidentally used as a park directory, subdirectories like `app/`, `vendor/`, and `public/` are now skipped with a warning rather than being registered as phantom sites.
+
+---
+
 ## [1.0.0] — 2026-03-25
 
 ### Added

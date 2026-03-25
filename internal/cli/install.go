@@ -493,11 +493,31 @@ fi
 		}
 		fishConf := filepath.Join(fishConfigDir, "lerd.fish")
 		content := fmt.Sprintf("set -gx PATH %s $PATH\n", binDir)
-		return os.WriteFile(fishConf, []byte(content), 0644)
+		if err := os.WriteFile(fishConf, []byte(content), 0644); err != nil {
+			return err
+		}
+		installCompletion(lerdBin, "fish", filepath.Join(home, ".config", "fish", "completions"), "lerd.fish")
+		return nil
 	case isShell(shell, "zsh"):
-		return appendShellRC(filepath.Join(home, ".zshrc"), binDir)
+		if err := appendShellRC(filepath.Join(home, ".zshrc"), binDir); err != nil {
+			return err
+		}
+		zfuncDir := filepath.Join(home, ".zfunc")
+		if err := os.MkdirAll(zfuncDir, 0755); err == nil {
+			installCompletion(lerdBin, "zsh", zfuncDir, "_lerd")
+			appendShellRC(filepath.Join(home, ".zshrc"), "") // ensure fpath line exists
+			ensureZshFpath(filepath.Join(home, ".zshrc"), zfuncDir)
+		}
+		return nil
 	default:
-		return appendShellRC(filepath.Join(home, ".bashrc"), binDir)
+		if err := appendShellRC(filepath.Join(home, ".bashrc"), binDir); err != nil {
+			return err
+		}
+		bashCompDir := filepath.Join(home, ".local", "share", "bash-completion", "completions")
+		if err := os.MkdirAll(bashCompDir, 0755); err == nil {
+			installCompletion(lerdBin, "bash", bashCompDir, "lerd")
+		}
+		return nil
 	}
 }
 
@@ -514,4 +534,31 @@ func appendShellRC(rcFile, binDir string) error {
 
 func isShell(shell, name string) bool {
 	return len(shell) > 0 && filepath.Base(shell) == name
+}
+
+// installCompletion generates and writes a shell completion script for lerd.
+func installCompletion(lerdBin, shell, dir, filename string) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	out, err := exec.Command(lerdBin, "completion", shell).Output()
+	if err != nil {
+		return
+	}
+	os.WriteFile(filepath.Join(dir, filename), out, 0644) //nolint:errcheck
+}
+
+// ensureZshFpath appends a fpath line for dir to the zshrc if not already present.
+func ensureZshFpath(zshrc, dir string) {
+	data, _ := os.ReadFile(zshrc)
+	line := fmt.Sprintf("fpath=(%s $fpath)", dir)
+	if strings.Contains(string(data), line) {
+		return
+	}
+	f, err := os.OpenFile(zshrc, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "\n# Lerd completions\n%s\nautoload -Uz compinit && compinit\n", line)
 }
