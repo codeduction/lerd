@@ -7,6 +7,14 @@ Lerd uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.3] — 2026-03-26
+
+### Fixed
+
+- **No internet access from PHP-FPM containers** — on systems where `/etc/resolv.conf` points to a stub resolver (`127.0.0.53` via systemd-resolved), aardvark-dns could not forward external DNS queries because the stub address is only reachable on the host's loopback, not from inside the container network namespace. `lerd start` and `lerd install` now detect the real upstream DNS servers (reading `/run/systemd/resolve/resolv.conf` first) and set them on the `lerd` Podman network so aardvark-dns forwards correctly.
+
+---
+
 ## [1.0.2] — 2026-03-25
 
 ### Added

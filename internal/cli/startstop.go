@@ -153,6 +153,14 @@ func runStart(_ *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Sync upstream DNS servers on the lerd network so aardvark-dns can forward
+	// external queries. On systems where /etc/resolv.conf points to a stub resolver
+	// (e.g. 127.0.0.53 via systemd-resolved), aardvark-dns cannot reach that address
+	// from inside the container network namespace, breaking internet access in containers.
+	if err := podman.EnsureNetworkDNS("lerd", dns.ReadUpstreamDNS()); err != nil {
+		fmt.Printf("  WARN: network DNS: %v\n", err)
+	}
+
 	// Wait for lerd-dns to be ready before configuring the resolver.
 	// systemctl start returns when the unit is active, but dnsmasq inside the
 	// container may not be listening yet. If we set resolvectl to use port 5300

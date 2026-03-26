@@ -105,13 +105,18 @@ var nmcliDNSFunc = func() []string {
 	return parseNmcliLines(string(out))
 }
 
-// readUpstreamDNS returns upstream DNS server IPs from the running system.
+// ReadUpstreamDNS returns upstream DNS server IPs from the running system.
 // Sources tried in order:
 //  1. /run/systemd/resolve/resolv.conf — real upstreams on systemd-resolved systems
 //  2. /etc/resolv.conf — fallback
 //  3. nmcli — DHCP-provided DNS from NetworkManager
 //
 // Returns nil if nothing is found; callers should omit no-resolv in that case.
+func ReadUpstreamDNS() []string {
+	return readUpstreamDNS()
+}
+
+// readUpstreamDNS is the internal implementation.
 func readUpstreamDNS() []string {
 	for _, path := range resolvPaths {
 		if servers := parseNameservers(path); len(servers) > 0 {
