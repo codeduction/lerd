@@ -3,7 +3,7 @@
 Service presets are the YAML-driven definitions for every service lerd manages. There are two kinds:
 
 - **Default presets** (`default: true`) — the always-recognised services that ship with lerd: `mysql`, `redis`, `postgres`, `meilisearch`, `rustfs`, `mailpit`. They get auto-listed in `lerd service` everywhere; their lifecycle is identical to add-on presets but they don't need an explicit install step.
-- **Add-on presets** — opt-in installers for phpMyAdmin, pgAdmin, MongoDB, alternate MySQL / MariaDB versions, Selenium, Stripe Mock, Memcached, RabbitMQ, Elasticsearch, Elasticvue.
+- **Add-on presets** — opt-in installers for phpMyAdmin, pgAdmin, MongoDB, alternate MySQL / MariaDB versions, Selenium, Stripe Mock, Memcached, RabbitMQ, Elasticsearch, Elasticvue, Gotenberg.
 
 Both kinds use the same YAML schema in `internal/config/presets/*.yaml` and the same code path. Adding or replacing a default service is a YAML edit, not a code change. See [Service updates](service-updates.md) for the configuration knobs (`update_strategy`, `track_latest`, `allow_major_upgrade`).
 
@@ -34,6 +34,7 @@ Both kinds use the same YAML schema in `internal/config/presets/*.yaml` and the 
 | `rabbitmq` | `docker.io/library/rabbitmq:3-management-alpine` | - | `http://localhost:15672` (mgmt UI, opens in new tab) |
 | `elasticsearch` | `docker.elastic.co/elasticsearch/elasticsearch:8.13.4` | - | `127.0.0.1:9200` |
 | `elasticvue` | `docker.io/cars10/elasticvue:latest` | `elasticsearch` (preset) | `http://localhost:8083` |
+| `gotenberg` | `docker.io/gotenberg/gotenberg:8` | - | `http://localhost:3000` |
 
 ```bash
 # List the bundled presets and their install state
@@ -170,6 +171,7 @@ A preset's `depends_on` is enforced two ways:
 | `rabbitmq` | management UI: `root` / `lerd` (also the default AMQP user) |
 | `elasticsearch` | no auth (`xpack.security.enabled=false` for local dev) |
 | `elasticvue` | no auth, opens straight to the pre-configured `Lerd Elasticsearch` cluster at `http://localhost:9200` |
+| `gotenberg` | HTTP basic auth: `lerd` / `secret`; apps get `GOTENBERG_URL`, `GOTENBERG_USERNAME`, and `GOTENBERG_PASSWORD` |
 
 ## Database service quality-of-life
 
